@@ -280,6 +280,21 @@ public final class ComputationState {
     };
   }
 
+/*  public GradientSolver gslvrMultinomial() {
+    final double [] fullbeta = _beta.clone();
+    return new GradientSolver() {
+      @Override
+      public GradientInfo getGradient(double[] beta) {
+      //  fillSubRange(_activeData.fullN()+1,c,_activeDataMultinomial[c].activeCols(),beta,fullbeta);
+        GLMGradientInfo fullGinfo =  _gslvr.getGradient(fullbeta);
+        return new GLMSubsetGinfo(fullGinfo,_activeData.fullN()+1,c,_activeDataMultinomial[c].activeCols());
+      }
+      @Override
+      public GradientInfo getObjective(double[] beta) {return getGradient(beta);}
+    };
+  }*/
+
+
   public void setBetaMultinomial(int c, double [] beta, double [] bc) {
     if(_u != null) Arrays.fill(_u,0);
     fillSubRange(_activeData.fullN()+1,c,_activeDataMultinomial[c].activeCols(),bc,beta);
@@ -628,6 +643,7 @@ public final class ComputationState {
     }
   }
 
+  // activeData contains only active columns of one class
   protected GramXY computeNewGram(DataInfo activeData, double [] beta, GLMParameters.Solver s){
     double obj_reg = _parms._obj_reg;
     if(_glmw == null) _glmw = new GLMModel.GLMWeightsFun(_parms);
@@ -645,16 +661,19 @@ public final class ComputationState {
 
     return res;
   }
+  
 
   GramXY _currGram;
   GLMModel.GLMWeightsFun _glmw;
 
 
   // get cached gram or incrementally update or compute new one
-  public GramXY computeGram(double [] beta, GLMParameters.Solver s){
+  public GramXY computeGram(double [] beta, GLMParameters.Solver s){ // beta can contain coeff of all classes
     double obj_reg = _parms._obj_reg;
     boolean weighted = _parms._family != Family.gaussian || _parms._link != GLMParameters.Link.identity;
-    if(_parms._family == Family.multinomial) // no caching
+    if(_parms._family == Family.multinomial && s.equals(GLMParameters.Solver.IRLSM_SPEEDUP)) // no caching
+      return computeNewGram(activeDataMultinomial(),beta,s);
+    else if (_parms._family == Family.multinomial)
       return computeNewGram(activeDataMultinomial(_activeClass),beta,s);
     if(s != GLMParameters.Solver.COORDINATE_DESCENT)
       // only cache for solver==COD

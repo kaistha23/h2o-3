@@ -56,9 +56,12 @@ public class OptimizationUtils {
     int nfeval();
     double getObj();
     double[] getX();
+
+    double[] get_betaAll();
   }
 
   public static final class SimpleBacktrackingLS implements LineSearchSolver {
+    private double[] _betaAll;  // for multinomial only
     private double [] _beta;
     final double _stepDec = .33;
     private double _step;
@@ -73,6 +76,13 @@ public class OptimizationUtils {
     public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen) {
       this(gslvr, betaStart, l1pen, gslvr.getObjective(betaStart));
     }
+
+    public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen, double[] betaAll) {
+      this(gslvr, betaStart, l1pen, gslvr.getObjective(betaStart));
+      _betaAll = new double[betaAll.length];
+      System.arraycopy(betaAll, 0, _betaAll, 0, _betaAll.length);
+    }
+    
     public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen, GradientInfo ginfo) {
       _gslvr = gslvr;
       _beta = betaStart;
@@ -87,6 +97,9 @@ public class OptimizationUtils {
 
     @Override
     public double[] getX() {return _beta;}
+    
+    // access to multinomial coeffs of all classes
+    public double[] get_betaAll() { return _betaAll;}
 
     public LineSearchSolver setInitialStep(double s){
       return this;
@@ -137,6 +150,7 @@ public class OptimizationUtils {
     double _minRelativeImprovement = 1e-8;
     private final GradientSolver _gslvr;
     private double [] _beta;
+    private double[] _betaAll;
 
 
     public MoreThuente(GradientSolver gslvr, double [] betaStart){
@@ -144,6 +158,11 @@ public class OptimizationUtils {
     }
     public MoreThuente(GradientSolver gslvr, double [] betaStart, GradientInfo ginfo){
       this(gslvr,betaStart,ginfo,.1,.1,1e-8);
+    }
+    public MoreThuente(GradientSolver gslvr, double [] betaStart, GradientInfo ginfo, double[] betaAll){
+      this(gslvr,betaStart,ginfo,.1,.1,1e-8);
+      _betaAll = new double[betaAll.length];
+      System.arraycopy(betaAll, 0, _betaAll, 0, _betaAll.length);
     }
     public MoreThuente(GradientSolver gslvr, double [] betaStart, GradientInfo ginfo, double ftol, double gtol, double xtol){
       _gslvr = gslvr;
@@ -164,10 +183,13 @@ public class OptimizationUtils {
     }
 
     @Override
-    public double getObj() {return ginfo()._objVal;}
+    public double getObj() {return ginfo()._objVal; }
 
     @Override
-    public double[] getX() { return _beta;}
+    public double[] getX() { return _beta; }
+    
+    @Override
+    public double[] get_betaAll() { return _betaAll; }        
 
     double _xtol = 1e-8;
     double _ftol = .1; // .2/.25 works

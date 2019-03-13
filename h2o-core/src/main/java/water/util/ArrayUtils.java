@@ -104,6 +104,19 @@ public class ArrayUtils {
       sum += x[i]*x[i];
     return sum;
   }
+
+  public static double l2norm2(double [] x, boolean intercetp, int nclass){
+    double sum = 0;
+    int npred = x.length/nclass-1;
+    int interceptInd = npred+1;     // index of intercept of first class
+    int last = intercetp?npred:interceptInd;
+    for (int classInd=0; classInd < nclass; classInd++) { // sum square of coefficients over all classes
+      for (int i = 0; i < last; ++i) // sum square of coefficients for each class
+        sum += x[i+classInd*nclass] * x[i+classInd*nclass];
+    }
+    return sum;
+  }
+  
   public static double l2norm2(double[] x, double[] y) {  // Computes \sum_{i=1}^n (x_i - y_i)^2
     assert x.length == y.length;
     double sse = 0;
@@ -216,6 +229,20 @@ public class ArrayUtils {
     for(int i = 0; i < a.length; i++ ) a[i] += b[i];
     return a;
   }
+  // a is gradient
+  public static double[] add(double[] a, double[] b, int colid, int ncoeffPClass, int nclass) {
+    if( a==null ) return b;
+    for (int classInd=0; classInd < nclass; classInd++) {
+      a[classInd*ncoeffPClass+colid] += b[classInd];
+    }
+    return a;
+  }
+  public static double[] add(double[] a, double[] b, int coeffId, int ncoeffPClass) {
+    if( a==null ) return b;
+    for(int i = 0; i < a.length; i++ ) // per class
+      a[i] += b[i*ncoeffPClass+coeffId];
+    return a;
+  }
   public static double[] add(double[] a, double b) {
     for(int i = 0; i < a.length; i++ ) a[i] += b;
     return a;
@@ -225,6 +252,21 @@ public class ArrayUtils {
     if( a==null ) return b;
     for(int i = 0; i < a.length; i++ )
       a[i] += w*b[i];
+    return a;
+  }
+
+  public static double[] wadd(double[] a, double[] b, double w, int colid, int ncoeffPClass) {
+    if( a==null ) return b;
+    for(int i = 0; i < a.length; i++ ) // going through each class
+      a[i] += w*b[i*ncoeffPClass+colid];
+    return a;
+  }
+
+  // a is gradient, b has length nclass
+  public static double[] wadd(double[] a, double[] b, double w, int colid, int ncoeffPClass, int nclass) {
+    if( a==null ) return b;
+    for(int i = 0; i < nclass; i++ ) // going through each class
+      a[i*ncoeffPClass+colid] += w*b[i];
     return a;
   }
 
@@ -310,7 +352,8 @@ public class ArrayUtils {
   }
   public static double[] mult(double[] nums, double n) {
 //    assert !Double.isInfinite(n) : "Trying to multiply " + Arrays.toString(nums) + " by  " + n; // Almost surely not what you want
-    for (int i=0; i<nums.length; i++) nums[i] *= n;
+    int arrayLen = nums.length;
+    for (int i=0; i<arrayLen; i++) nums[i] *= n;
     return nums;
   }
   public static double[][] mult(double[][] ary, double n) {
@@ -1365,6 +1408,20 @@ public class ArrayUtils {
       System.arraycopy(x,i*N,res[i],0,N);
     }
     return res;
+  }
+
+  public static double [][] convertTo2DMatrix(double [] x, double[][] x2d) {
+    assert x2d!= null;  // assert x2d is not null and contains the same number of elements as x
+    assert x2d[0] != null;
+    assert x.length == x2d.length*x2d[0].length;
+    
+    int N = x2d[0].length;
+    int len = x2d.length;
+    
+    for(int i = 0; i < len; ++i) {
+      System.arraycopy(x,i*N,x2d[i],0,N);
+    }
+    return x2d;
   }
 
   public static double[] flat(double[][] arr) {
