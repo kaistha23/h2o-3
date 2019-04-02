@@ -759,12 +759,12 @@ public class GLMBasicTestMultinomial extends TestUtil {
     int nclass = 4;
     double threshold = 1e-10;
     DataInfo dinfo=null;
-    int numRows = 40;
+    int numRows = 10000;
     
     try {
       f1 = TestUtil.generate_enum_only(2, numRows, nclass, 0);
       Scope.track(f1);
-      f2 = TestUtil.generate_real_only(2, numRows, 0);
+      f2 = TestUtil.generate_real_only(4, numRows, 0);
       Scope.track(f2);
       f3 = TestUtil.generate_enum_only(1, numRows, nclass, 0);
       Scope.track(f3);
