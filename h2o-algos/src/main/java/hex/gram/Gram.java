@@ -21,7 +21,7 @@ public final class Gram extends Iced<Gram> {
   final int _denseN;
   int _fullN;
   final static int MIN_TSKSZ=10000;
-  boolean _multinomialSpeedUp = false;
+  public boolean _multinomialSpeedUp = false;
 
   private static class XXCache {
     public final boolean lowerDiag;
@@ -121,6 +121,15 @@ public final class Gram extends Iced<Gram> {
   public void addDiag(double d) {addDiag(d,false);}
 
   public void addDiag(double d, boolean add2Intercept) {
+    _diagAdded += d;
+    for( int i = 0; i < _diag.length; ++i )
+      _diag[i] += d;
+    int ii = (!_hasIntercept || add2Intercept)?0:1;
+    for( int i = 0; i < _xx.length - ii; ++i )
+      _xx[i][_xx[i].length - 1] += d;
+  }
+
+  public void addDiag(double d, boolean add2Intercept, int nclass) { // todo: fix this for multinomial speedup
     _diagAdded += d;
     for( int i = 0; i < _diag.length; ++i )
       _diag[i] += d;
