@@ -299,6 +299,12 @@ public final class ComputationState {
     if(_u != null) Arrays.fill(_u,0);
     fillSubRange(_activeData.fullN()+1,c,_activeDataMultinomial[c].activeCols(),bc,beta);
   }
+
+  public void setBetaMultinomial(double [] beta, double [] bc) {
+    if(_u != null) Arrays.fill(_u,0);
+    for (int c=0; c < _nclasses; c++) // loop through and call existing function instead of writing my own
+      fillSubRange(_activeData.fullN()+1,c,_activeDataMultinomial[c].activeCols(),bc,beta);
+  }
   /**
    * Apply strong rules to filter out expected inactive (with zero coefficient) predictors.
    *
@@ -650,10 +656,10 @@ public final class ComputationState {
     GLMTask.GLMIterationTask gt = new GLMTask.GLMIterationTask(_job._key, activeData, _glmw, beta,_activeClass, s.equals(GLMParameters.Solver.IRLSM_SPEEDUP)).doAll(activeData._adaptedFrame);
     gt._gram.mul(obj_reg);
     ArrayUtils.mult(gt._xy,obj_reg);
-    int [] activeCols = activeData.activeCols();
+    int [] activeCols = activeData.activeCols(); // the active columns here refer to the predictors....
     int [] zeros = gt._gram.findZeroCols();
     GramXY res;
-    if(_parms._family != Family.multinomial && zeros.length > 0) {
+    if(_parms._family != Family.multinomial && zeros.length > 0) {  // ignore this for multinomial
       gt._gram.dropCols(zeros);
       removeCols(zeros);
       res = new ComputationState.GramXY(gt._gram,ArrayUtils.removeIds(gt._xy, zeros),null,gt._beta == null?null:ArrayUtils.removeIds(gt._beta, zeros),activeData().activeCols(),null,gt._yy,gt._likelihood);

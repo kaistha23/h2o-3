@@ -56,13 +56,10 @@ public class OptimizationUtils {
     int nfeval();
     double getObj();
     double[] getX();
-
-    double[] get_betaAll();
   }
 
   public static final class SimpleBacktrackingLS implements LineSearchSolver {
-    private double[] _betaAll;  // for multinomial only
-    private double [] _beta;
+    private double [] _beta;  // for multinomial speedup, this will be beta stacked up for all classes
     final double _stepDec = .33;
     private double _step;
     private final GradientSolver _gslvr;
@@ -75,12 +72,6 @@ public class OptimizationUtils {
 
     public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen) {
       this(gslvr, betaStart, l1pen, gslvr.getObjective(betaStart));
-    }
-
-    public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen, double[] betaAll) {
-      this(gslvr, betaStart, l1pen, gslvr.getObjective(betaStart));
-      _betaAll = new double[betaAll.length];
-      System.arraycopy(betaAll, 0, _betaAll, 0, _betaAll.length);
     }
     
     public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen, GradientInfo ginfo) {
@@ -97,9 +88,6 @@ public class OptimizationUtils {
 
     @Override
     public double[] getX() {return _beta;}
-    
-    // access to multinomial coeffs of all classes
-    public double[] get_betaAll() { return _betaAll;}
 
     public LineSearchSolver setInitialStep(double s){
       return this;
@@ -187,9 +175,6 @@ public class OptimizationUtils {
 
     @Override
     public double[] getX() { return _beta; }
-    
-    @Override
-    public double[] get_betaAll() { return _betaAll; }        
 
     double _xtol = 1e-8;
     double _ftol = .1; // .2/.25 works
