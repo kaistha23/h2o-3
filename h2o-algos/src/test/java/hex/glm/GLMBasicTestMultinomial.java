@@ -575,7 +575,7 @@ public class GLMBasicTestMultinomial extends TestUtil {
       double[] xy = new double[beta.length];
       double manualLLH = manualHessianXYLLH(beta, hessian, xy, dinfo, nclass, ncoeffPClass, fr.numCols()-1);
       GLMTask.GLMIterationTask gmt = new GLMTask.GLMIterationTask(null,dinfo,glmw,beta,
-              nclass).doAll(dinfo._adaptedFrame);
+              nclass, true).doAll(dinfo._adaptedFrame);
 
       // check likelihood calculation;
       assertEquals(manualLLH, gmt._likelihood, threshold);

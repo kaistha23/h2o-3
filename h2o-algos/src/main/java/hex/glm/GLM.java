@@ -741,28 +741,23 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
       double[] beta = _state.betaMultinomial(); // full length multinomial coefficients all stacked up
       do {
         beta = beta.clone();  // full length coeffs
-        int c=0;
         
         // check and walk through all classes
         boolean onlyIcpt = true; 
         for (int classInd = 0; classInd < _nclass; classInd++) {
-          onlyIcpt = onlyIcpt && (_state.activeDataMultinomial(c).fullN() == 0);
+          onlyIcpt = onlyIcpt && (_state.activeDataMultinomial(classInd).fullN() == 0);
         }
         
-        if (s.equals(Solver.IRLSM_SPEEDUP))
-          _state.setActiveClass(_nclass); // set ActiveClass to be number of class for IRLSM_SPEEDUP
-        else
-          _state.setActiveClass(c);
+        _state.setActiveClass(_nclass); // set ActiveClass to be number of class for IRLSM_SPEEDUP
+
         // generate an array of ls, should it be only one with giant stacks of class coeffs
-        LineSearchSolver[] ls = new LineSearchSolver[_nclass];
-        for (int cIndex=0; cIndex < _nclass; cIndex++)
-          ls[cIndex] = (_state.l1pen() == 0)
-                  ? new MoreThuente(_state.gslvrMultinomial(cIndex), _state.betaMultinomial(cIndex,beta), 
-                  _state.ginfoMultinomial(cIndex), beta)
-                  : new SimpleBacktrackingLS(_state.gslvrMultinomial(cIndex), _state.betaMultinomial(cIndex, beta),
-                  _state.l1pen(), beta);
-
-
+        // need to fix _state.ginfoMultinomial(0) will only return coeffs of one class.  I need them all stacked up
+        LineSearchSolver ls = (_state.l1pen() == 0)
+                ? new MoreThuente(_state.gslvrMultinomial(0), _state.betaMultinomial(), 
+                _state.ginfoMultinomial(0))
+                : new SimpleBacktrackingLS(_state.gslvrMultinomial(0), _state.betaMultinomial(0, beta),
+                _state.l1pen());
+        
           long t1 = System.currentTimeMillis();
           // generate prediction output of each class and store results in _adaptedFrame
           new GLMMultinomialSpeedUpUpdate(_state.activeDataMultinomial(), 
@@ -770,7 +765,7 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
       //  new GLMMultinomialUpdate(_state.activeDataMultinomial(),
        //         _job._key, beta, c).doAll(_state.activeDataMultinomial()._adaptedFrame);
           long t2 = System.currentTimeMillis();
-          ComputationState.GramXY gram = _state.computeGram(ls[c].get_betaAll(), s); // use ls.getX() to get only one class of coeffs.
+          ComputationState.GramXY gram = _state.computeGram(ls.get_betaAll(), s); // use ls.getX() to get only one class of coeffs.
           long t3 = System.currentTimeMillis();
    //       double[] betaCnd = ADMM_solve(gram.gram, gram.xy);
 
