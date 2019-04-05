@@ -80,4 +80,17 @@ public class AUCBuilderTest {
     assertArrayEquals(expected, ths, 0);
   }
 
+  @Test
+  public void testLargeWeights() {
+    AUC2.AUCBuilder ab = new AUC2.AUCBuilder(2);
+
+    double w = Double.MAX_VALUE;
+    ab.perRow(0, 1, w);
+    ab.perRow( 0.3, 1, w);
+    ab.perRow(0.7, 1, w);
+    ab.perRow(1, 1, w);
+
+    assertArrayEquals(new double[]{0.0, 0.85}, Arrays.copyOf(ab._ths, 2), 0);
+  }
+
 }
