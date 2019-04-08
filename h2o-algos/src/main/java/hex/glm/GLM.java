@@ -1758,7 +1758,7 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
     }
 
     @Override
-    public GradientInfo gradient(double[] beta) {
+    public GradientInfo gradient(double[] beta) { // todo: make sure this works with MultinomialSpeedUp
       double[] grad = _gram.mul(beta);
       for (int i = 0; i < _xy.length; ++i)
         grad[i] -= _xy[i];
