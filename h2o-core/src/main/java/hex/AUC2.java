@@ -378,12 +378,6 @@ public class AUC2 extends Iced {
       double k1 = k(ssx+1);
       _sqe[ssx] = _sqe[ssx]+_sqe[ssx+1]+compute_delta_error(_ths[ssx+1],k1,_ths[ssx],k0);
       _ths[ssx] = combine_centers(_ths[ssx], k0, _ths[ssx+1], k1);
-
-      if (Double.isNaN(_ths[ssx])) {
-        System.out.println("dsfsdf");
-      }
-
-
       _tps[ssx] += _tps[ssx+1];
       _fps[ssx] += _fps[ssx+1];
       // Slide over to crush the removed bin at index (ssx+1)
