@@ -67,19 +67,30 @@ public class OptimizationUtils {
     private double _objVal; // objective including l1 penalty
     final double _l1pen;
     int _maxfev = 20;
-    double _minStep = 1e-4;
+    boolean _multinomialSpeedup=false;
+    int _nclass;      // number of classes, only valid when _multinomialSpeedup = true
+    int _coeffPClass; // number of coefficients per class
 
 
     public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen) {
-      this(gslvr, betaStart, l1pen, gslvr.getObjective(betaStart));
+      this(gslvr, betaStart, l1pen, gslvr.getObjective(betaStart), false,  0,  0);
+    }
+
+    public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen, boolean speedup, int nclass, int coeffPClass) {
+      this(gslvr, betaStart, l1pen, gslvr.getObjective(betaStart), speedup, nclass, coeffPClass);
     }
     
-    public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen, GradientInfo ginfo) {
+    public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen, GradientInfo ginfo, 
+                                boolean speedup, int nclass, int coeffPClass) {
       _gslvr = gslvr;
       _beta = betaStart;
       _ginfo = ginfo;
       _l1pen = l1pen;
-      _objVal = _ginfo._objVal + _l1pen * ArrayUtils.l1norm(_beta,true);
+      _multinomialSpeedup = speedup;
+      _nclass = nclass;
+      _coeffPClass = coeffPClass;
+      _objVal = _ginfo._objVal + _l1pen * (_multinomialSpeedup?ArrayUtils.l1norm(_beta, true, _nclass,
+              _coeffPClass):ArrayUtils.l1norm(_beta,true));
     }
     public int nfeval() {return -1;}
 
