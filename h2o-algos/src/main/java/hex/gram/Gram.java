@@ -86,6 +86,30 @@ public final class Gram extends Iced<Gram> {
     --_fullN;
   }
 
+  public void dropIntercept(int nclass){
+    if(!_hasIntercept) throw new IllegalArgumentException("Has no intercept");
+    int coeffPClass = _xx.length/nclass;
+    int icptInd = coeffPClass-1;
+    double [][] xx = new double[_xx.length-nclass][];
+    for (int i=0; i < icptInd; i++) { // re-assign first class without intercept
+      xx[i] = _xx[i];
+    }
+    int newXXCounter = icptInd;
+    for (int i=coeffPClass; i<_xx.length; i++) {
+      if ((i%coeffPClass)!=0) { // only perform operation at non-intercept row
+        xx[newXXCounter] = new double[newXXCounter];
+        int numIntercept = i / coeffPClass;
+        for (int rInd=0; rInd<numIntercept; rInd++) {
+          System.arraycopy(_xx[i], rInd*coeffPClass, xx[newXXCounter], rInd*coeffPClass, icptInd);
+        }
+        newXXCounter++;
+      }
+    }
+    _xx = xx;
+    _hasIntercept = false;
+    _fullN -= nclass;
+  }
+
   public Gram deep_clone(){
     Gram res = clone();
     if(_xx != null)
@@ -131,11 +155,14 @@ public final class Gram extends Iced<Gram> {
 
   public void addDiag(double d, boolean add2Intercept, int nclass) { // todo: fix this for multinomial speedup
     _diagAdded += d;
-    for( int i = 0; i < _diag.length; ++i )
-      _diag[i] += d;
+    int coeffPClass = _xx.length/nclass;
     int ii = (!_hasIntercept || add2Intercept)?0:1;
-    for( int i = 0; i < _xx.length - ii; ++i )
-      _xx[i][_xx[i].length - 1] += d;
+    for( int i = 0; i < coeffPClass - ii; ++i ) {
+      for (int classInd=0; classInd < nclass; classInd++) {
+        int diagInd = i + classInd * coeffPClass;
+        _xx[diagInd][diagInd] += d;
+      }
+    }
   }
 
   public double sparseness(){
@@ -685,7 +712,7 @@ public final class Gram extends Iced<Gram> {
      *
      * @param y
      */
-    public final void   solve(double[] y) {
+    public final void   solve(double[] y) { // todo: make this work with multinomialSpeedUp
       if( !isSPD() ) throw new NonSPDMatrixException();
       if(_icptFirst) {
         double icpt = y[y.length-1];

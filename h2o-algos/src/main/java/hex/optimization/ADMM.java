@@ -113,16 +113,16 @@ public class ADMM {
         if(_pm != null && (i + 1) % 5 == 0)_pm.progress(z,solver.gradient(z));
         // compute u and z updateADMM
         double rnorm = 0, snorm = 0, unorm = 0, xnorm = 0;
-        for (int j = 0; j < N - hasIcpt; ++j) {
+        for (int j = 0; j < N - hasIcpt; ++j) { // intercepts are excluded here
           double xj = x[j];
           double zjold = z[j];
-          double x_hat = xj * orlx + (1 - orlx) * zjold;
-          double zj = shrinkage(x_hat + u[j], kappa[j]);
+          double x_hat = xj * orlx + (1 - orlx) * zjold;  // average new x from solve with old z value
+          double zj = shrinkage(x_hat + u[j], kappa[j]);  // apply soft thresholding as on page 43
           if (lb != null && zj < lb[j])
             zj = lb[j];
           if (ub != null && zj > ub[j])
             zj = ub[j];
-          u[j] += x_hat - zj;
+          u[j] += x_hat - zj; // update on page 43 for u
           beta_given[j] = zj - u[j];
           double r = xj - zj;
           double s = zj - zjold;
@@ -132,7 +132,7 @@ public class ADMM {
           unorm += rho[j] * rho[j] * u[j] * u[j];
           z[j] = zj;
         }
-        if (hasIntercept) {
+         if (hasIntercept) { // todo: make sure this works with multinomialSpeedUp
           int idx = x.length - 1;
           double icpt = x[idx];
           if (lb != null && icpt < lb[idx])
@@ -182,7 +182,7 @@ public class ADMM {
     }
     /**
      * Estimate optimal rho based on l1 penalty and (estimate of) solution x without the l1penalty
-     * @param x
+     * @param x:
      * @param l1pen
      * @return
      */
