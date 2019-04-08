@@ -142,6 +142,17 @@ public class ArrayUtils {
       sum += x[i] >= 0?x[i]:-x[i];
     return sum;
   }
+  public static double l1norm(double [] x, boolean skipLast, int nclass, int coeffPClass){
+    double sum = 0;
+    int last = x.length -(skipLast?1:0);
+    for (int classInd=0; classInd < nclass; classInd++) {
+      for (int i = 0; i < last; ++i) {
+        int trueInd = i + classInd * coeffPClass;
+        sum += x[trueInd] >= 0 ? x[trueInd] : -x[trueInd];
+      }
+    }
+    return sum;
+  }
   public static double linfnorm(double [] x, boolean skipLast){
     double res = Double.NEGATIVE_INFINITY;
     int last = x.length -(skipLast?1:0);

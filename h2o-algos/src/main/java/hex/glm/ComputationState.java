@@ -43,6 +43,7 @@ public final class ComputationState {
   private GLMGradientSolver _gslvr;
   private final Job _job;
   private int _activeClass = -1;
+  public boolean _multinomialSpeedup = false;
 
   /**
    *
@@ -215,14 +216,22 @@ public final class ComputationState {
     return res;
   }
 
-  private static void fillSubRange(int N, int c, int [] ids, double [] src, double [] dst) {
-    if(ids == null) {
+  /**
+   * 
+   * @param N: number of coefficients per class
+   * @param c: class index
+   * @param ids: column indices of active columns
+   * @param src: values of active columns only
+   * @param dst: coefficients of all classes stacked up
+   */
+  private static void fillSubRange(int N, int c, int [] ids, double [] src, double [] dst) {  
+    if(ids == null) { // if no active indices are stored, copy everything in src to dst
       System.arraycopy(src,0,dst,c*N,N);
     } else {
-      int j = 0;
-      int off = c * N;
-      for (int i : ids)
-        dst[off + i] = src[j++];
+        int j = 0;
+        int off = c * N;
+        for (int i : ids)
+          dst[off + i] = src[j++];
     }
   }
 
@@ -265,15 +274,24 @@ public final class ComputationState {
       super(fullInfo._likelihood, fullInfo._objVal, extractSubRange(N,c,ids,fullInfo._gradient));
       _fullInfo = fullInfo;
     }
+
+    public GLMSubsetGinfo(GLMGradientInfo fullInfo) {
+      super(fullInfo._likelihood, fullInfo._objVal, fullInfo._gradient);
+      _fullInfo = fullInfo;
+    }
   }
   public GradientSolver gslvrMultinomial(final int c) {
     final double [] fullbeta = _beta.clone();
     return new GradientSolver() {
       @Override
-      public GradientInfo getGradient(double[] beta) {
-        fillSubRange(_activeData.fullN()+1,c,_activeDataMultinomial[c].activeCols(),beta,fullbeta);
-        GLMGradientInfo fullGinfo =  _gslvr.getGradient(fullbeta);
-        return new GLMSubsetGinfo(fullGinfo,_activeData.fullN()+1,c,_activeDataMultinomial[c].activeCols());
+      public GradientInfo getGradient(double[] beta) { // beta stores coeff of one class for other
+        if (_multinomialSpeedup) {
+          System.arraycopy(beta, 0, fullbeta, 0, fullbeta.length);  // just copy over the whole beta
+        } else
+          fillSubRange(_activeData.fullN() + 1, c, _activeDataMultinomial[c].activeCols(), beta, fullbeta); // todo: fix this for speedup
+
+        GLMGradientInfo fullGinfo = _gslvr.getGradient(fullbeta);
+        return _multinomialSpeedup? new GLMSubsetGinfo(fullGinfo):new GLMSubsetGinfo(fullGinfo, _activeData.fullN() + 1, c, _activeDataMultinomial[c].activeCols());
       }
       @Override
       public GradientInfo getObjective(double[] beta) {return getGradient(beta);}
@@ -659,13 +677,13 @@ public final class ComputationState {
     int [] activeCols = activeData.activeCols(); // the active columns here refer to the predictors....
     int [] zeros = gt._gram.findZeroCols();
     GramXY res;
-    if(_parms._family != Family.multinomial && zeros.length > 0) {  // ignore this for multinomial
+    if(_parms._family != Family.multinomial && zeros.length > 0) {  // multinomials will not drop zero column
       gt._gram.dropCols(zeros);
       removeCols(zeros);
       res = new ComputationState.GramXY(gt._gram,ArrayUtils.removeIds(gt._xy, zeros),null,gt._beta == null?null:ArrayUtils.removeIds(gt._beta, zeros),activeData().activeCols(),null,gt._yy,gt._likelihood);
     } else res = new GramXY(gt._gram,gt._xy,null,beta == null?null:beta,activeCols,null,gt._yy,gt._likelihood);
 
-    return res;
+    return res; // active columns for one class only
   }
   
 

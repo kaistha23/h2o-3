@@ -756,7 +756,7 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
                 ? new MoreThuente(_state.gslvrMultinomial(0), _state.betaMultinomial(), 
                 _state.ginfoMultinomial(0))
                 : new SimpleBacktrackingLS(_state.gslvrMultinomial(0), _state.betaMultinomial(),
-                _state.l1pen());
+                _state.l1pen(), true, 0,0);
         
           long t1 = System.currentTimeMillis();
           // generate prediction output of each class and store results in _adaptedFrame
@@ -883,7 +883,8 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
             if(ls == null)
               ls = (_state.l1pen() == 0 && !_state.activeBC().hasBounds())
                  ? new MoreThuente(_state.gslvr(),_state.beta(), _state.ginfo())
-                 : new SimpleBacktrackingLS(_state.gslvr(),_state.beta().clone(), _state.l1pen(), _state.ginfo());
+                 : new SimpleBacktrackingLS(_state.gslvr(),_state.beta().clone(), _state.l1pen(), _state.ginfo(), 
+                      false, 0, 0);
             if (!ls.evaluate(ArrayUtils.subtract(betaCnd, ls.getX(), betaCnd))) { // ls.getX() get the old beta value
               Log.info(LogMsg("Ls failed " + ls));
               return;
@@ -1304,9 +1305,10 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
 
         if (_parms._family.equals(Family.ordinal))
           _dinfo.addResponse(new String[]{"__glm_ExpC", "__glm_ExpNPC"}, vecs); // store eta for class C and class C-1
-        else if (_parms._family.equals(Family.multinomial) && _parms._solver.equals(Solver.IRLSM_SPEEDUP))
+        else if (_parms._family.equals(Family.multinomial) && _parms._solver.equals(Solver.IRLSM_SPEEDUP)) {
           _dinfo.addResponse(new String[]{"__glm_sumExp", "__glm_logSumExp"}, vecs);
-          else
+          _state._multinomialSpeedup = true;
+        } else
           _dinfo.addResponse(new String[]{"__glm_sumExp", "__glm_maxRow"}, vecs);
       }
       
@@ -1651,7 +1653,9 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
       }
     }
 
-    public GramSolver(Gram gram, double[] xy, boolean intercept, double l2pen, double l1pen, double[] beta_given, double[] proxPen, double[] lb, double[] ub, int nclass) {
+    // todo: make sure this works with speedup
+    public GramSolver(Gram gram, double[] xy, boolean intercept, double l2pen, double l1pen, double[] beta_given,
+                      double[] proxPen, double[] lb, double[] ub, int nclass) {
       if (ub != null && lb != null)
         for (int i = 0; i < ub.length; ++i) {
           assert ub[i] >= lb[i] : i + ": ub < lb, ub = " + Arrays.toString(ub) + ", lb = " + Arrays.toString(lb);
@@ -1668,40 +1672,45 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
       // Here we compute the rho for each coordinate by using equation for computing coefficient for single coordinate and then making the two penalties equal.
       //
       int ii = intercept ? 1 : 0;
-      int icptCol = gram.fullN()-1;
+      int icptCol = gram._multinomialSpeedUp?(xy.length/nclass-1):(gram.fullN()-1);
       double[] rhos = MemoryManager.malloc8d(xy.length);
       double min = Double.POSITIVE_INFINITY;
-      if (gram._multinomialSpeedUp) { // special for multinomial speedup
-        
-      } else {
-        for (int i = 0; i < xy.length - ii; ++i) { // this loop excludes the intercept
-          double d = xy[i];
+      int coeffPClass = xy.length/(gram._multinomialSpeedUp?nclass:1);
+      int classIndBound = gram._multinomialSpeedUp?nclass:1;
+      for (int classInd=0; classInd < classIndBound; classInd++) {
+        for (int i = 0; i < coeffPClass - ii; ++i) { // this loop excludes the intercept
+          double d = xy[i+classInd*coeffPClass];
           d = d >= 0 ? d : -d;
           if (d < min && d != 0) min = d;
         }
-
-        double ybar = xy[icptCol];  // intercept in the column
-        for (int i = 0; i < rhos.length - ii; ++i) { // this loop excludes the intercept
-          double y = xy[i];
-          if (y == 0) y = min;
-          double xbar = gram.get(icptCol, i);
-          double x = ((y - ybar * xbar) / ((gram.get(i, i) - xbar * xbar) + l2pen));///gram.get(i,i);
-          rhos[i] = ADMM.L1Solver.estimateRho(x, l1pen, lb == null ? Double.NEGATIVE_INFINITY : lb[i], ub == null ? Double.POSITIVE_INFINITY : ub[i]);
-        }
-        // do the intercept separate as l1pen does not apply to it
-        if (intercept && (lb != null && !Double.isInfinite(lb[icptCol]) || ub != null && !Double.isInfinite(ub[icptCol]))) {
-          int icpt = xy.length - 1;
-          rhos[icpt] = 1;//(xy[icpt] >= 0 ? xy[icpt] : -xy[icpt]);
-        }
-        if (l2pen > 0)
-          gram.addDiag(l2pen);
-        if (proxPen != null && beta_given != null) {
-          gram.addDiag(proxPen);
-          xy = xy.clone();
-          for (int i = 0; i < xy.length; ++i)
-            xy[i] += proxPen[i] * beta_given[i];
+      }
+      for (int classInd=0; classInd < classIndBound; classInd++) {
+        int offSet = classInd*coeffPClass;
+        double ybar = xy[icptCol+offSet];
+        for (int i=0; i<coeffPClass-ii; i++) {  // make sure intercept terms are skipped here if ii>0
+          int trueInd = i+offSet;
+          double y=xy[trueInd];
+          if (y==0) y=min;
+          double xbar = gram.get(icptCol+offSet, trueInd);
+          double x = (y-ybar*xbar)/(gram.get(trueInd, trueInd)-xbar*xbar+l2pen);
+          rhos[trueInd] = ADMM.L1Solver.estimateRho(x, l1pen, lb == null ? Double.NEGATIVE_INFINITY : lb[trueInd],
+                  ub == null ? Double.POSITIVE_INFINITY : ub[trueInd]);
         }
       }
+      // do the intercept separate as l1pen does not apply to it
+      if (intercept && (lb != null && !Double.isInfinite(lb[icptCol]) || ub != null && !Double.isInfinite(ub[icptCol]))) {
+        int icpt = xy.length - 1;
+        rhos[icpt] = 1;//(xy[icpt] >= 0 ? xy[icpt] : -xy[icpt]);
+      }
+      if (l2pen > 0)
+        gram.addDiag(l2pen);
+      if (proxPen != null && beta_given != null) {
+        gram.addDiag(proxPen);
+        xy = xy.clone();
+        for (int i = 0; i < xy.length; ++i)
+          xy[i] += proxPen[i] * beta_given[i];
+      }
+
       _xy = xy;
       _rho = rhos;
       computeCholesky(gram, rhos, 1e-5,intercept);
