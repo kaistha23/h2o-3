@@ -144,7 +144,7 @@ public class ArrayUtils {
   }
   public static double l1norm(double [] x, boolean skipLast, int nclass, int coeffPClass){
     double sum = 0;
-    int last = x.length -(skipLast?1:0);
+    int last = coeffPClass -(skipLast?1:0);
     for (int classInd=0; classInd < nclass; classInd++) {
       for (int i = 0; i < last; ++i) {
         int trueInd = i + classInd * coeffPClass;
@@ -258,7 +258,14 @@ public class ArrayUtils {
     for(int i = 0; i < a.length; i++ ) a[i] += b;
     return a;
   }
-
+  public static double[] add(double[] a, double b, int nclass, int ncoeffPClass, boolean addIntercept) {
+    int ii = addIntercept?1:0;
+    int finalInd = ncoeffPClass-ii;
+    for (int classInd = 0; classInd < nclass; classInd++) {
+      for (int i = 0; i < finalInd; i++) a[i+classInd*ncoeffPClass] += b;
+    }
+    return a;
+  }
   public static double[] wadd(double[] a, double[] b, double w) {
     if( a==null ) return b;
     for(int i = 0; i < a.length; i++ )

@@ -122,7 +122,7 @@ public final class Gram extends Iced<Gram> {
   public final int fullN(){return _fullN;}
   public double _diagAdded;
 
-  public void addDiag(double [] ds) {
+  public void addDiag(double [] ds) { // no need to change for multinomial speedup
     int i = 0;
     for(;i < Math.min(_diagN,ds.length); ++i)
       _diag[i] += ds[i];

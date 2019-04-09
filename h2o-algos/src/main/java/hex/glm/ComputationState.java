@@ -79,7 +79,7 @@ public final class ComputationState {
     adjustToNewLambda(lambda, 0);
   }
   public double [] beta(){
-    if(_activeClass != -1)
+    if(_activeClass != -1 && (!_multinomialSpeedup))
       return betaMultinomial(_activeClass,_beta);
     return _beta;
   }
@@ -106,7 +106,7 @@ public final class ComputationState {
   private void adjustToNewLambda(double lambdaNew, double lambdaOld) {
     double ldiff = lambdaNew - lambdaOld;
     if(ldiff == 0 || l2pen() == 0) return;
-    double l2pen = .5*ArrayUtils.l2norm2(_beta,true);
+    double l2pen = .5*ArrayUtils.l2norm2(_beta,true, _multinomialSpeedup?_nclasses:1);
     if (_parms._family==Family.ordinal)
       l2pen = l2pen/_nclasses;   // need only one set of parameters
 
@@ -118,7 +118,7 @@ public final class ComputationState {
           DataInfo activeData = activeDataMultinomial(c);
           for (int i = 0; i < activeData.fullN(); ++i) {
             double b = _beta[off + i];
-            _ginfo._gradient[off + i] += ldiff * b;
+            _ginfo._gradient[off + i] += ldiff * b; // add gradient contribution from l2 reg
             l2pen += b*b;
           }
           if (_parms._family == Family.ordinal) // one beta for all classes
@@ -237,7 +237,9 @@ public final class ComputationState {
 
   public double [] betaMultinomial(){return _beta;}
 
-  public double [] betaMultinomial(int c, double [] beta) {return extractSubRange(_activeData.fullN()+1,c,_activeDataMultinomial[c].activeCols(),beta);}
+  public double[] betaMultinomial(int c, double[] beta) {
+    return extractSubRange(_activeData.fullN() + 1, c, _activeDataMultinomial[c].activeCols(), beta);
+  }
 
   public GLMSubsetGinfo ginfoMultinomial(int c) {
     return new GLMSubsetGinfo(_ginfo,(_activeData.fullN()+1),c,_activeDataMultinomial[c].activeCols());

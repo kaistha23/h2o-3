@@ -27,6 +27,7 @@ public class ADMM {
     int iter;
     final double _eps;
     final int max_iter;
+    int _nclass = 1;  // default is one
 
     MathUtils.Norm _gradientNorm = Norm.L_Infinite;
 
@@ -39,11 +40,20 @@ public class ADMM {
       this(eps,max_iter,DEFAULT_RELTOL,DEFAULT_ABSTOL,u);
     }
 
+    public L1Solver(double eps, int max_iter, double [] u, int nclass) {
+      this(eps,max_iter,DEFAULT_RELTOL,DEFAULT_ABSTOL,u,nclass);
+    }
+
     public L1Solver(double eps, int max_iter, double reltol, double abstol, double [] u) {
       _eps = eps; this.max_iter = max_iter;
       _u = u;
       RELTOL = reltol;
       ABSTOL = abstol;
+    }
+    
+    public L1Solver(double eps, int max_iter, double reltol, double abstol, double [] u, int nclass) {
+      this(eps, max_iter, reltol, abstol, u);
+      _nclass=nclass;
     }
 
     public L_BFGS.ProgressMonitor _pm;
@@ -103,9 +113,13 @@ public class ADMM {
           beta_given[i] = z[i] - _u[i];
       } else u = _u = MemoryManager.malloc8d(z.length);
       double [] kappa = MemoryManager.malloc8d(rho.length);
-      if(l1pen > 0)
-        for(int i = 0; i < N-hasIcpt; ++i)
-          kappa[i] = rho[i] != 0?l1pen/rho[i]:0;
+      int coeffPClass = z.length/_nclass;
+      if(l1pen > 0) {
+        for (int classInd = 0; classInd < _nclass; classInd++) {  // skip intercepts here, prepare for soft thresholding
+          for (int i = 0; i < coeffPClass - hasIcpt; ++i)
+            kappa[i+classInd*coeffPClass] = rho[i+classInd*coeffPClass] != 0 ? l1pen / rho[i+classInd*coeffPClass] : 0;
+        }
+      }
       int i;
       double orlx = 1.0; // over-relaxation
       double reltol = RELTOL;
@@ -113,41 +127,48 @@ public class ADMM {
         if(_pm != null && (i + 1) % 5 == 0)_pm.progress(z,solver.gradient(z));
         // compute u and z updateADMM
         double rnorm = 0, snorm = 0, unorm = 0, xnorm = 0;
-        for (int j = 0; j < N - hasIcpt; ++j) { // intercepts are excluded here
-          double xj = x[j];
-          double zjold = z[j];
-          double x_hat = xj * orlx + (1 - orlx) * zjold;  // average new x from solve with old z value
-          double zj = shrinkage(x_hat + u[j], kappa[j]);  // apply soft thresholding as on page 43
-          if (lb != null && zj < lb[j])
-            zj = lb[j];
-          if (ub != null && zj > ub[j])
-            zj = ub[j];
-          u[j] += x_hat - zj; // update on page 43 for u
-          beta_given[j] = zj - u[j];
-          double r = xj - zj;
-          double s = zj - zjold;
-          rnorm += r * r;
-          snorm += s * s;
-          xnorm += xj * xj;
-          unorm += rho[j] * rho[j] * u[j] * u[j];
-          z[j] = zj;
+        for (int classInd = 0; classInd < _nclass; classInd++) {
+          for (int j = 0; j < coeffPClass - hasIcpt; ++j) { // intercepts are excluded here
+            int trueInd = j+classInd*coeffPClass;
+            double xj = x[trueInd];
+            double zjold = z[trueInd];
+            double x_hat = xj * orlx + (1 - orlx) * zjold;  // average new x from solve with old z value
+            double zj = shrinkage(x_hat + u[trueInd], kappa[trueInd]);  // apply soft thresholding as on page 43
+            if (lb != null && zj < lb[trueInd])
+              zj = lb[trueInd];
+            if (ub != null && zj > ub[trueInd])
+              zj = ub[trueInd];
+            u[trueInd] += x_hat - zj; // update on page 43 for u
+            beta_given[trueInd] = zj - u[trueInd];
+            double r = xj - zj;
+            double s = zj - zjold;
+            rnorm += r * r;
+            snorm += s * s;
+            xnorm += xj * xj;
+            unorm += rho[trueInd] * rho[trueInd] * u[trueInd] * u[trueInd];
+            z[trueInd] = zj;
+          }
         }
-         if (hasIntercept) { // todo: make sure this works with multinomialSpeedUp
-          int idx = x.length - 1;
-          double icpt = x[idx];
-          if (lb != null && icpt < lb[idx])
-            icpt = lb[idx];
-          if (ub != null && icpt > ub[idx])
-            icpt = ub[idx];
-          double r = x[idx] - icpt;
-          double s = icpt - z[idx];
-          u[idx] += r;
-          beta_given[idx] = icpt - u[idx];
-          rnorm += r * r;
-          snorm += s * s;
-          xnorm += icpt * icpt;
-          unorm += rho[idx] * rho[idx] * u[idx] * u[idx];
-          z[idx] = icpt;
+        
+        // not needed for intercepts
+         if (hasIntercept) {
+           for (int classInd=1; classInd <= _nclass; classInd++) {
+             int idx = coeffPClass*classInd - 1;
+             double icpt = x[idx];
+             if (lb != null && icpt < lb[idx])
+               icpt = lb[idx];
+             if (ub != null && icpt > ub[idx])
+               icpt = ub[idx];
+            // double r = x[idx] - icpt;
+           //  double s = icpt - z[idx];
+           //  u[idx] += r;
+             beta_given[idx] = icpt; // - u[idx];
+           //  rnorm += r * r;
+            // snorm += s * s;
+             xnorm += icpt * icpt;
+             unorm += rho[idx] * rho[idx] * u[idx] * u[idx];
+             z[idx] = icpt;
+           }
         }
         if (rnorm < (abstol + (reltol * Math.sqrt(xnorm))) && snorm < (abstol + reltol * Math.sqrt(unorm))) {
           double oldGerr = gerr;
