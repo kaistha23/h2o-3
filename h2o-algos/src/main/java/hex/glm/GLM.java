@@ -1698,7 +1698,8 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
         }
       }
       // do the intercept separate as l1pen does not apply to it
-      if (intercept && (lb != null && !Double.isInfinite(lb[icptCol]) || ub != null && !Double.isInfinite(ub[icptCol]))) {
+      if (!gram._multinomialSpeedUp&&intercept && (lb != null && !Double.isInfinite(lb[icptCol]) || ub != null 
+              && !Double.isInfinite(ub[icptCol]))) { // todo: this is a bug I believe
         int icpt = xy.length - 1;
         rhos[icpt] = 1;//(xy[icpt] >= 0 ? xy[icpt] : -xy[icpt]);
       }
@@ -1717,8 +1718,8 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
     }
 
     private void computeCholesky(Gram gram, double[] rhos, double rhoAdd, boolean intercept) {
-      gram.addDiag(rhos);
-      if(!intercept) {  // deal with intercept if they do not exist
+      gram.addDiag(rhos); // todo: make sure to test when there is no intercept
+      if(!intercept) {  // deal with intercept if they do not exist, always calculate intercept for gram
         gram.dropIntercept();
         rhos = Arrays.copyOf(rhos,rhos.length-1);
         _xy[_xy.length-1] = 0;
