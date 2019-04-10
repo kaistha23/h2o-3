@@ -739,6 +739,7 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
       assert _dinfo._responses == 3 : "IRLSM for multinomial needs extra information encoded in additional reponses, expected 3 response vecs, got " + _dinfo._responses;
 
       double[] beta = _state.betaMultinomial(); // full length multinomial coefficients all stacked up
+      double[] betaCnd = new double[beta.length];
       do {
         beta = beta.clone();  // full length coeffs
         int c=0;
@@ -748,11 +749,7 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
         for (int classInd = 0; classInd < _nclass; classInd++) {
           onlyIcpt = onlyIcpt && (_state.activeDataMultinomial(c).fullN() == 0);
         }
-        
-        if (s.equals(Solver.IRLSM_SPEEDUP))
-          _state.setActiveClass(_nclass); // set ActiveClass to be number of class for IRLSM_SPEEDUP
-        else
-          _state.setActiveClass(c);
+        _state.setActiveClass(_nclass); // set ActiveClass to be number of class for IRLSM_SPEEDUP
         // generate an array of ls, should it be only one with giant stacks of class coeffs
         LineSearchSolver[] ls = new LineSearchSolver[_nclass];
         for (int cIndex=0; cIndex < _nclass; cIndex++)
@@ -772,6 +769,7 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
           long t2 = System.currentTimeMillis();
           ComputationState.GramXY gram = _state.computeGram(ls[c].get_betaAll(), s); // use ls.getX() to get only one class of coeffs.
           long t3 = System.currentTimeMillis();
+          solveBeta(gram.gram, gram.xy, betaCnd, beta);
    //       double[] betaCnd = ADMM_solve(gram.gram, gram.xy);
 
           long t4 = System.currentTimeMillis();
@@ -786,6 +784,14 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
 
         _state.setActiveClass(-1);
       } while (progress(beta, _state.gslvr().getGradient(beta)));
+    }
+    
+    private void solveBeta(Gram gram, double[] xy, double[] newBeta, double[] beta) {  // final result stores in newBeta
+      Arrays.fill(newBeta, 0);
+      // add l1pen to xy if needed
+      // add l2pen to xy and gram if needed
+      // get cholesky of gram
+      // solve for newBeta
     }
 
     // use regular gradient descend here.  Need to figure out how to adjust for the alpha, lambda for the elastic net

@@ -17,7 +17,8 @@ def test_glm_multinomial():
 #    d = h2o.import_file(pyunit_utils.locate("bigdata/laptop/glm/multinomial_20Class_training_set_enum_trueOneHot.csv.zip")) # user data that shows the problem.
 #    enumCols = ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "C13", "C79"]
 
-    d = h2o.import_file(pyunit_utils.locate("bigdata/laptop/glm/multinomial_3Class_training_set_enum_trueOneHot.csv")) # user data that shows the problem.
+ #   d = h2o.import_file(pyunit_utils.locate("bigdata/laptop/glm/multinomial_3Class_training_set_enum_trueOneHot.csv")) # user data that shows the problem.
+    d = h2o.import_file(pyunit_utils.locate("smalldata/glm_test/multinomial_3Class_10KRow.csv")) # user data that shows the problem.
     enumCols = ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "C13", "C14", "C15", "C16",
                 "C17", "C18", "C19", "C20", "C79"]
     
