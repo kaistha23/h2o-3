@@ -6,6 +6,7 @@ import water.util.ArrayUtils;
 import water.util.Log;
 import water.util.MathUtils;
 import water.util.MathUtils.Norm;
+import java.util.Arrays;
 
 /**
  * Created by tomasnykodym on 3/2/15.
@@ -93,7 +94,18 @@ public class ADMM {
       return gerr;
     }
 
-    public boolean solve(ProximalSolver solver, double[] z, double l1pen, boolean hasIntercept, double[] lb, double[] ub) {
+    /**
+     * 
+     * @param solver
+     * @param z: store xy at the beginning.  Will end up storing new beta at the end
+     * @param l1pen
+     * @param hasIntercept
+     * @param lb
+     * @param ub
+     * @return
+     */
+    public boolean solve(ProximalSolver solver, double[] z, double l1pen, boolean hasIntercept, double[] lb, 
+                         double[] ub) {
       gerr = Double.POSITIVE_INFINITY;
       iter = 0;
       if (l1pen == 0 && lb == null && ub == null) {
@@ -105,15 +117,21 @@ public class ADMM {
       double abstol = ABSTOL * Math.sqrt(N);
       double [] rho = solver.rho();
       double [] x = z.clone();
+      Arrays.fill(z, 0.0);  //
       double [] beta_given = MemoryManager.malloc8d(N);
       double [] u;
+      int coeffPClass = z.length/_nclass;
       if(_u != null) {
         u = _u;
-        for (int i = 0; i < beta_given.length - hasIcpt; ++i)
-          beta_given[i] = z[i] - _u[i];
+        for (int classInd=0; classInd < _nclass; classInd++) {
+          for (int i = 0; i < coeffPClass - hasIcpt; ++i) { // intercept terms are left alone
+            int trueInd = i+classInd*coeffPClass;
+            beta_given[trueInd] = z[trueInd] - _u[trueInd];
+          }
+        }
       } else u = _u = MemoryManager.malloc8d(z.length);
       double [] kappa = MemoryManager.malloc8d(rho.length);
-      int coeffPClass = z.length/_nclass;
+
       if(l1pen > 0) {
         for (int classInd = 0; classInd < _nclass; classInd++) {  // skip intercepts here, prepare for soft thresholding
           for (int i = 0; i < coeffPClass - hasIcpt; ++i)
@@ -123,14 +141,14 @@ public class ADMM {
       int i;
       double orlx = 1.0; // over-relaxation
       double reltol = RELTOL;
-      for (i = 0; i < max_iter && solver.solve(beta_given, x); ++i) {
-        if(_pm != null && (i + 1) % 5 == 0)_pm.progress(z,solver.gradient(z));
+      for (i = 0; i < max_iter && solver.solve(beta_given, x); ++i) { // beta_given is z-u, x = xy at first, store xk
+        if(_pm != null && (i + 1) % 5 == 0)_pm.progress(z,solver.gradient(z));  // z = xy at the beginning
         // compute u and z updateADMM
         double rnorm = 0, snorm = 0, unorm = 0, xnorm = 0;
         for (int classInd = 0; classInd < _nclass; classInd++) {
           for (int j = 0; j < coeffPClass - hasIcpt; ++j) { // intercepts are excluded here
             int trueInd = j+classInd*coeffPClass;
-            double xj = x[trueInd];
+            double xj = x[trueInd]; // contains the solution of inv(Gram)*(_xy+rho(z-u))
             double zjold = z[trueInd];
             double x_hat = xj * orlx + (1 - orlx) * zjold;  // average new x from solve with old z value
             double zj = shrinkage(x_hat + u[trueInd], kappa[trueInd]);  // apply soft thresholding as on page 43
@@ -150,8 +168,7 @@ public class ADMM {
           }
         }
         
-        // not needed for intercepts
-         if (hasIntercept) {
+/*         if (hasIntercept) {
            for (int classInd=1; classInd <= _nclass; classInd++) {
              int idx = coeffPClass*classInd - 1;
              double icpt = x[idx];
@@ -159,17 +176,17 @@ public class ADMM {
                icpt = lb[idx];
              if (ub != null && icpt > ub[idx])
                icpt = ub[idx];
-            // double r = x[idx] - icpt;
-           //  double s = icpt - z[idx];
-           //  u[idx] += r;
-             beta_given[idx] = icpt; // - u[idx];
-           //  rnorm += r * r;
-            // snorm += s * s;
+             double r = x[idx] - icpt;
+             double s = icpt - z[idx];
+             u[idx] += r;
+             beta_given[idx] = icpt - u[idx];
+             rnorm += r * r;
+             snorm += s * s;
              xnorm += icpt * icpt;
-             unorm += rho[idx] * rho[idx] * u[idx] * u[idx];
+            unorm += rho[idx] * rho[idx] * u[idx] * u[idx];
              z[idx] = icpt;
            }
-        }
+        }*/
         if (rnorm < (abstol + (reltol * Math.sqrt(xnorm))) && snorm < (abstol + reltol * Math.sqrt(unorm))) {
           double oldGerr = gerr;
           computeErr(z, solver.gradient(z)._gradient, l1pen, lb, ub);
@@ -187,12 +204,23 @@ public class ADMM {
           return true;
         }
       }
+      if (hasIntercept) { // fill in the intercept values for z which now holds beta
+           for (int classInd=1; classInd <= _nclass; classInd++) {
+             int idx = coeffPClass*classInd - 1;
+             double icpt = x[idx];
+             if (lb != null && icpt < lb[idx])
+               icpt = lb[idx];
+             if (ub != null && icpt > ub[idx])
+               icpt = ub[idx];
+             z[idx] = icpt;
+           }
+        }
       computeErr(z, solver.gradient(z)._gradient, l1pen, lb, ub);
       if(iter == max_iter)
         Log.warn("ADMM solver reached maximum number of iterations (" + max_iter + ")");
       else
         Log.warn("ADMM solver stopped after " + i + " iterations. (max_iter=" + max_iter + ")");
-      if(gerr > _eps) Log.warn("ADMM solver finished with gerr = " + gerr + " >  eps = " + _eps);
+     if(gerr > _eps) Log.warn("ADMM solver finished with gerr = " + gerr + " >  eps = " + _eps);
       iter = max_iter;
       if(_pm != null && (i + 1) % 5 == 0)_pm.progress(z,solver.gradient(z));
       return false;
