@@ -645,20 +645,20 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
         chol.solve(xy);
       } else {
         gram = gram.deep_clone();
-        xy = xy.clone();
+        xy = xy.clone();  // this is no longer point to the actual xy array, it is a new place
         GramSolver slvr = new GramSolver(gram.clone(), xy.clone(), _parms._intercept, _state.l2pen(),_state.l1pen(), _state.activeBC()._betaGiven, _state.activeBC()._rho, _state.activeBC()._betaLB, _state.activeBC()._betaUB, nclass);
         _chol = slvr._chol;
         if(_state.l1pen() == 0 && !_state.activeBC().hasBounds()) { // todo: check with l1pen=0
           slvr.solve(xy);
         } else {
-          xy = MemoryManager.malloc8d(xy.length);
+         // xy = MemoryManager.malloc8d(xy.length); // why are we setting this to zero? It is zk and uk who may be zero at the beginning
           if (_state._u == null && (_parms._family != Family.multinomial))
             _state._u = MemoryManager.malloc8d(_state.activeData().fullN() + 1);
           (_lslvr = new ADMM.L1Solver(1e-4, 10000, _state._u, nclass)).solve(slvr, xy, _state.l1pen(), 
                   _parms._intercept, _state.activeBC()._betaLB, _state.activeBC()._betaUB);
         }
       }
-      return xy;
+      return xy;  // store new beta values here.  Variable naming is confusing.
     }
 
     private void fitCOD_multinomial(Solver s) {
@@ -1762,7 +1762,7 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
     public boolean solve(double[] beta_given, double[] result) {
       if (beta_given != null)
         for (int i = 0; i < _xy.length; ++i)
-          result[i] = _xy[i] + _rho[i] * beta_given[i]; // rho is zero for intercept terms
+          result[i] = _xy[i] + _rho[i] * beta_given[i]; // rho is zero for intercept terms, let them add!
       else
         System.arraycopy(_xy, 0, result, 0, _xy.length);
       _chol.solve(result);
