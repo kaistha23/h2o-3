@@ -322,8 +322,7 @@ public final class ComputationState {
 
   public void setBetaMultinomial(double [] beta, double [] bc) {
     if(_u != null) Arrays.fill(_u,0);
-    for (int c=0; c < _nclasses; c++) // loop through and call existing function instead of writing my own
-      fillSubRange(_activeData.fullN()+1,c,_activeDataMultinomial[c].activeCols(),bc,beta);
+    System.arraycopy(bc, 0, beta, 0, beta.length);
   }
   /**
    * Apply strong rules to filter out expected inactive (with zero coefficient) predictors.

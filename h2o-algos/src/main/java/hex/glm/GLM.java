@@ -742,17 +742,19 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
 
       double[] beta = _state.betaMultinomial(); // full length multinomial coefficients all stacked up
       int coeffPClass = beta.length/_nclass;
+      boolean firstIter;
+      int iterCnt = 0;
+      _state.setActiveClass(_nclass); // set ActiveClass to be number of class for IRLSM_SPEEDUP
+
       do {
         beta = beta.clone();  // full length coeffs
-        
+        firstIter = iterCnt == 0;
         // check and walk through all classes
         boolean onlyIcpt = true; 
         for (int classInd = 0; classInd < _nclass; classInd++) {
           onlyIcpt = onlyIcpt && (_state.activeDataMultinomial(classInd).fullN() == 0);
         }
         
-        _state.setActiveClass(_nclass); // set ActiveClass to be number of class for IRLSM_SPEEDUP
-
         // generate an array of ls, should it be only one with giant stacks of class coeffs
         // todo: need to fix _state.ginfoMultinomial(0) will only return coeffs of one class.  I need them all stacked up
         LineSearchSolver ls = (_state.l1pen() == 0)
@@ -771,17 +773,16 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
           double[] betaCnd = ADMM_solve(gram.gram, gram.xy, _nclass);
 
           long t4 = System.currentTimeMillis();
-          if (!onlyIcpt && !ls.evaluate(ArrayUtils.subtract(betaCnd, ls.getX(), betaCnd))) {
+          if (!onlyIcpt && !ls.evaluate(ArrayUtils.subtract(betaCnd, ls.getX(), betaCnd)) && !firstIter) {
             Log.info(LogMsg("Ls failed " + ls));
             continue;
           } 
           long t5 = System.currentTimeMillis();
-       //   _state.setBetaMultinomial(c, beta, ls.getX());
+          _state.setBetaMultinomial(beta, ls.getX());
           // update multinomial
           Log.info(LogMsg("computed in " + (t2 - t1) + "+" + (t3 - t2) + "+" + (t4 - t3) + "+" + (t5 - t4) + "=" + (t5 - t1) + "ms, step = " + ls.step() + ((_lslvr != null) ? ", l1solver " + _lslvr : "")));
-
-        _state.setActiveClass(-1);
-      } while (progress(beta, _state.gslvr().getGradient(beta)));
+          iterCnt++;
+      } while (progress(beta, _state.gslvr().getGradient(beta)) || firstIter);  // todo: fix this to obey max runtime.
     }
 
     // use regular gradient descend here.  Need to figure out how to adjust for the alpha, lambda for the elastic net

@@ -68,8 +68,8 @@ def fixInt2Enum(h2oframe):
 
 
 if __name__ == "__main__":
-   # h2o.init(ip="192.168.86.244", port=54321, strict_version_check=False)
+    h2o.init(ip="192.168.86.20", port=54321, strict_version_check=False)
     pyunit_utils.standalone_test(test_glm_multinomial)
 else:
-  #  h2o.init(ip="192.168.86.244", port=54321, strict_version_check=False)
+    h2o.init(ip="192.168.86.20", port=54321, strict_version_check=False)
     test_glm_multinomial()
