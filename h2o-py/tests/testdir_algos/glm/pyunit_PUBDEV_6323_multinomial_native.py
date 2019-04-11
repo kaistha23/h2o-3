@@ -34,14 +34,14 @@ def test_glm_multinomial():
     print("Training time (s) with default multinomial settings is {0}".format(runtime_default)) # 323 seconds
     print(m_default)
 
-    m_default_lambda = glm(family='multinomial', seed=12345, solver="irlsm")
-    m_default_lambda.train(training_frame=d, x=x, y=responseCol)
-    runtime_default_lambda = m_default_lambda._model_json["output"]["run_time"]/1000.0
-    print("Training time (s) with default multinomial settings is {0}".format(runtime_default_lambda)) # 323 seconds
-    print(m_default_lambda)
-
-    h2o.remove(m_default)
-    h2o.remove(m_default_lambda)
+    # m_default_lambda = glm(family='multinomial', seed=12345, solver="irlsm")
+    # m_default_lambda.train(training_frame=d, x=x, y=responseCol)
+    # runtime_default_lambda = m_default_lambda._model_json["output"]["run_time"]/1000.0
+    # print("Training time (s) with default multinomial settings is {0}".format(runtime_default_lambda)) # 323 seconds
+    # print(m_default_lambda)
+    # 
+    # h2o.remove(m_default)
+    # h2o.remove(m_default_lambda)
 
 
 
@@ -68,8 +68,8 @@ def fixInt2Enum(h2oframe):
 
 
 if __name__ == "__main__":
-    h2o.init(ip="192.168.86.20", port=54321, strict_version_check=False)
+    #h2o.init(ip="192.168.86.20", port=54321, strict_version_check=False)
     pyunit_utils.standalone_test(test_glm_multinomial)
 else:
-    h2o.init(ip="192.168.86.20", port=54321, strict_version_check=False)
+    #h2o.init(ip="192.168.86.20", port=54321, strict_version_check=False)
     test_glm_multinomial()

@@ -60,7 +60,7 @@ public class OptimizationUtils {
 
   public static final class SimpleBacktrackingLS implements LineSearchSolver {
     private double [] _beta;  // for multinomial speedup, this will be beta stacked up for all classes
-    final double _stepDec = .33;
+    double _stepDec = .33;
     private double _step;
     private final GradientSolver _gslvr;
     private GradientInfo _ginfo; // gradient info excluding l1 penalty
@@ -70,29 +70,31 @@ public class OptimizationUtils {
     boolean _multinomialSpeedup=false;
     int _nclass;      // number of classes default to one except for multinomial speedup
     int _coeffPClass; // number of coefficients per class
-
-
+    public boolean _updateObj=false;
+    
     public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen) {
-      this(gslvr, betaStart, l1pen, gslvr.getObjective(betaStart), false,  1,  betaStart.length);
+      this(gslvr, betaStart, l1pen, gslvr.getObjective(betaStart), false,  1,  betaStart.length, false);
     }
 
-    public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen, boolean speedup, int nclass, int coeffPClass) {
-      this(gslvr, betaStart, l1pen, gslvr.getObjective(betaStart), speedup, nclass, coeffPClass);
+    public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen, boolean speedup, int nclass,
+                                int coeffPClass, boolean updateVal) {
+      this(gslvr, betaStart, l1pen, gslvr.getObjective(betaStart), speedup, nclass, coeffPClass, updateVal);
     }
     
     public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen, GradientInfo ginfo, 
-                                boolean speedup, int nclass, int coeffPClass) {
+                                boolean speedup, int nclass, int coeffPClass, boolean updateVal) {
       _gslvr = gslvr;
       _beta = betaStart;
       _ginfo = ginfo;
       _l1pen = l1pen;
       _multinomialSpeedup = speedup;
-      _nclass = speedup?nclass:1;
+      _nclass = speedup?(nclass):1;
       _coeffPClass = speedup?coeffPClass:_beta.length;
       _objVal = _ginfo._objVal + _l1pen * ArrayUtils.l1norm(_beta, true, _nclass, _coeffPClass);
+      _updateObj = updateVal;
     }
     public int nfeval() {return -1;}
-
+    
     @Override
     public double getObj() {return _objVal;}
 
@@ -107,15 +109,18 @@ public class OptimizationUtils {
     public boolean evaluate(double[] direction) {
       double step = 1;
       double minStep = 1;
+      double denom = 1e-4/(_multinomialSpeedup?(_nclass*_nclass*_nclass):1);
       for(double d:direction) {
-        d = Math.abs(1e-4/d);
+        d = Math.abs(denom/d);
         if(d < minStep) minStep = d;
       }
+      GradientInfo ginfo=null;
+      double objVal=Double.MAX_VALUE;
       double [] newBeta = direction.clone();
       for(int i = 0; i < _maxfev && step >= minStep; ++i, step*= _stepDec) {
-        GradientInfo ginfo = _gslvr.getObjective(ArrayUtils.wadd(_beta,direction,newBeta,step));
-        double objVal = ginfo._objVal + _l1pen * ArrayUtils.l1norm(newBeta,true,_nclass, _coeffPClass);
-        if(objVal < _objVal){
+        ginfo = _gslvr.getObjective(ArrayUtils.wadd(_beta,direction,newBeta,step));
+        objVal = ginfo._objVal + _l1pen * ArrayUtils.l1norm(newBeta,true,_nclass, _coeffPClass);
+        if(objVal < _objVal || _updateObj) {
           _ginfo = ginfo;
           _objVal = objVal;
           _beta = newBeta;
@@ -123,6 +128,12 @@ public class OptimizationUtils {
           return true;
         }
       }
+/*      if (_updateObj) {
+        _ginfo = ginfo;
+        _objVal = objVal;
+        _beta = newBeta;
+        _step = step;
+      }*/
       return false;
     }
 
