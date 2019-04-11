@@ -1863,6 +1863,15 @@ public abstract class GLMTask  {
       _c = c;
     }
 
+    public  GLMIterationTask(Key jobKey, DataInfo dinfo, GLMWeightsFun glmw, double [] beta, int c, boolean multinomialSpeedup) {
+      super(null,dinfo,jobKey);
+      _beta = beta; // beta contains all class coeffs stacked up for IRLSM_SPEEDUP multinomial
+      _ymu = null;
+      _glmf = glmw;
+      _c = c;
+      _multiClassSpeedup=multinomialSpeedup;
+    }
+
     @Override public boolean handlesSparseData(){return true;}
 
     transient private double _sparseOffset;
@@ -1871,7 +1880,6 @@ public abstract class GLMTask  {
     @Override
     public void chunkInit() {
       // initialize
-      _multiClassSpeedup = (_glmf._family.equals(Family.multinomial)&&((_dinfo.fullN()+1)*_c==_beta.length));
       _gram = _multiClassSpeedup
               ?new Gram(_beta.length, _dinfo.numNums(), true)
               :new Gram(_dinfo.fullN(), _dinfo.largestCat(), _dinfo.numNums(), _dinfo._cats,true);

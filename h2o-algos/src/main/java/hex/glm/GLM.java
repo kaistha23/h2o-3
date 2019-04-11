@@ -757,7 +757,7 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
                 ? new MoreThuente(_state.gslvrMultinomial(0), _state.betaMultinomial(),
                 _state.ginfoMultinomial(0))
                 : new SimpleBacktrackingLS(_state.gslvrMultinomial(0), _state.betaMultinomial(),
-                _state.l1pen(), true, _nclass, coeffPClass);
+                _state.l1pen(), true, _nclass, coeffPClass, firstIter);
           long t1 = System.currentTimeMillis();
           // generate prediction output of each class and store results in _adaptedFrame
           new GLMMultinomialSpeedUpUpdate(_state.activeDataMultinomial(), 
@@ -913,7 +913,8 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
             if(ls == null)
               ls = (_state.l1pen() == 0 && !_state.activeBC().hasBounds())
                  ? new MoreThuente(_state.gslvr(),_state.beta(), _state.ginfo())
-                 : new SimpleBacktrackingLS(_state.gslvr(),_state.beta().clone(), _state.l1pen(), _state.ginfo(), false, 1, betaCnd.length);
+                 : new SimpleBacktrackingLS(_state.gslvr(),_state.beta().clone(), _state.l1pen(), _state.ginfo(), 
+                      false, 1, betaCnd.length, false);
             if (!ls.evaluate(ArrayUtils.subtract(betaCnd, ls.getX(), betaCnd))) { // ls.getX() get the old beta value
               Log.info(LogMsg("Ls failed " + ls));
               return;

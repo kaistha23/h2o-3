@@ -314,8 +314,9 @@ public final class ComputationState {
 
   public void setBetaMultinomial(double [] beta, double [] bc) {
     if(_u != null) Arrays.fill(_u,0);
-    for (int c=0; c < _nclasses; c++) // loop through and call existing function instead of writing my own
-      fillSubRange(_activeData.fullN()+1,c,_activeDataMultinomial[c].activeCols(),bc,beta);
+    System.arraycopy(bc, 0, beta, 0, beta.length);
+/*    for (int c=0; c < _nclasses; c++) // loop through and call existing function instead of writing my own
+      fillSubRange(_activeData.fullN()+1,c,_activeDataMultinomial[c].activeCols(),bc,beta);*/
   }
   /**
    * Apply strong rules to filter out expected inactive (with zero coefficient) predictors.
@@ -555,7 +556,7 @@ public final class ComputationState {
     if(_betaDiff < _parms._beta_epsilon) {
       convergenceMsg = "betaDiff < eps; betaDiff = " + _betaDiff + ", eps = " + _parms._beta_epsilon;
       converged = true;
-    } else if(_relImprovement < _parms._objective_epsilon) {
+    } else if((_iter > 1 || _relImprovement>0) && (_relImprovement < _parms._objective_epsilon)) {
       convergenceMsg = "relImprovement < eps; relImprovement = " + _relImprovement + ", eps = " + _parms._objective_epsilon;
       converged = true;
     } else convergenceMsg = "not converged, betaDiff = " + _betaDiff + ", relImprovement = " + _relImprovement;
@@ -665,7 +666,8 @@ public final class ComputationState {
   protected GramXY computeNewGram(DataInfo activeData, double [] beta, GLMParameters.Solver s){
     double obj_reg = _parms._obj_reg;
     if(_glmw == null) _glmw = new GLMModel.GLMWeightsFun(_parms);
-    GLMTask.GLMIterationTask gt = new GLMTask.GLMIterationTask(_job._key, activeData, _glmw, beta,_activeClass).doAll(activeData._adaptedFrame);
+    GLMTask.GLMIterationTask gt = new GLMTask.GLMIterationTask(_job._key, activeData, _glmw, beta,_activeClass,
+            s.equals(GLMParameters.Solver.IRLSM_SPEEDUP)).doAll(activeData._adaptedFrame);
     gt._gram.mul(obj_reg);
     ArrayUtils.mult(gt._xy,obj_reg);
     int [] activeCols = activeData.activeCols();

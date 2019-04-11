@@ -31,6 +31,7 @@ def test_glm_multinomial():
     m_default = glm(family='multinomial', seed=12345, solver="IRLSM_SPEEDUP")
     #m_default = glm(family='multinomial', seed=12345, solver="IRLSM")
     m_default.train(training_frame=d, x=x, y=responseCol)
+    speedupPred = m_default.predict(d)
     runtime_default = m_default._model_json["output"]["run_time"]/1000.0
     print("Training time (s) with default multinomial settings is {0}".format(runtime_default)) # 323 seconds
     print(m_default)
@@ -38,6 +39,7 @@ def test_glm_multinomial():
     m_default_lambda = glm(family='multinomial', seed=12345, solver="irlsm")
     m_default_lambda.train(training_frame=d, x=x, y=responseCol)
     runtime_default_lambda = m_default_lambda._model_json["output"]["run_time"]/1000.0
+    noSpeedupPred = m_default_lambda.predict(d)
     print("Training time (s) with default multinomial settings is {0}".format(runtime_default_lambda)) # 323 seconds
     print(m_default_lambda)
 
