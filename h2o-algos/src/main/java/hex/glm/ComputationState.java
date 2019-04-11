@@ -43,6 +43,7 @@ public final class ComputationState {
   private GLMGradientSolver _gslvr;
   private final Job _job;
   private int _activeClass = -1;
+  boolean _multinomialSpeedup = false;
 
   /**
    *
@@ -78,7 +79,7 @@ public final class ComputationState {
     adjustToNewLambda(lambda, 0);
   }
   public double [] beta(){
-    if(_activeClass != -1)
+    if(_activeClass != -1 && (!_multinomialSpeedup))
       return betaMultinomial(_activeClass,_beta);
     return _beta;
   }
@@ -105,7 +106,7 @@ public final class ComputationState {
   private void adjustToNewLambda(double lambdaNew, double lambdaOld) {
     double ldiff = lambdaNew - lambdaOld;
     if(ldiff == 0 || l2pen() == 0) return;
-    double l2pen = .5*ArrayUtils.l2norm2(_beta,true);
+    double l2pen = .5*ArrayUtils.l2norm2(_beta,true, _multinomialSpeedup?_nclasses:1);
     if (_parms._family==Family.ordinal)
       l2pen = l2pen/_nclasses;   // need only one set of parameters
 
@@ -117,7 +118,7 @@ public final class ComputationState {
           DataInfo activeData = activeDataMultinomial(c);
           for (int i = 0; i < activeData.fullN(); ++i) {
             double b = _beta[off + i];
-            _ginfo._gradient[off + i] += ldiff * b;
+            _ginfo._gradient[off + i] += ldiff * b; // add gradient contribution from l2 reg
             l2pen += b*b;
           }
           if (_parms._family == Family.ordinal) // one beta for all classes
@@ -219,16 +220,18 @@ public final class ComputationState {
     if(ids == null) {
       System.arraycopy(src,0,dst,c*N,N);
     } else {
-      int j = 0;
-      int off = c * N;
-      for (int i : ids)
-        dst[off + i] = src[j++];
+        int j = 0;
+        int off = c * N;
+        for (int i : ids)
+          dst[off + i] = src[j++];
     }
   }
 
   public double [] betaMultinomial(){return _beta;}
 
-  public double [] betaMultinomial(int c, double [] beta) {return extractSubRange(_activeData.fullN()+1,c,_activeDataMultinomial[c].activeCols(),beta);}
+  public double[] betaMultinomial(int c, double[] beta) {
+    return extractSubRange(_activeData.fullN() + 1, c, _activeDataMultinomial[c].activeCols(), beta);
+  }
 
   public GLMSubsetGinfo ginfoMultinomial(int c) {
     return new GLMSubsetGinfo(_ginfo,(_activeData.fullN()+1),c,_activeDataMultinomial[c].activeCols());
@@ -265,15 +268,24 @@ public final class ComputationState {
       super(fullInfo._likelihood, fullInfo._objVal, extractSubRange(N,c,ids,fullInfo._gradient));
       _fullInfo = fullInfo;
     }
+
+    public GLMSubsetGinfo(GLMGradientInfo fullInfo) {
+      super(fullInfo._likelihood, fullInfo._objVal, fullInfo._gradient);
+      _fullInfo = fullInfo;
+    }
   }
   public GradientSolver gslvrMultinomial(final int c) {
     final double [] fullbeta = _beta.clone();
     return new GradientSolver() {
       @Override
-      public GradientInfo getGradient(double[] beta) {
-        fillSubRange(_activeData.fullN()+1,c,_activeDataMultinomial[c].activeCols(),beta,fullbeta);
-        GLMGradientInfo fullGinfo =  _gslvr.getGradient(fullbeta);
-        return new GLMSubsetGinfo(fullGinfo,_activeData.fullN()+1,c,_activeDataMultinomial[c].activeCols());
+      public GradientInfo getGradient(double[] beta) { // beta stores coeff of one class for other
+        if (_multinomialSpeedup) {
+          System.arraycopy(beta, 0, fullbeta, 0, fullbeta.length);  // just copy over the whole beta
+        } else
+          fillSubRange(_activeData.fullN() + 1, c, _activeDataMultinomial[c].activeCols(), beta, fullbeta); // todo: fix this for speedup
+
+        GLMGradientInfo fullGinfo = _gslvr.getGradient(fullbeta);
+        return _multinomialSpeedup? new GLMSubsetGinfo(fullGinfo):new GLMSubsetGinfo(fullGinfo, _activeData.fullN() + 1, c, _activeDataMultinomial[c].activeCols());
       }
       @Override
       public GradientInfo getObjective(double[] beta) {return getGradient(beta);}
@@ -298,6 +310,12 @@ public final class ComputationState {
   public void setBetaMultinomial(int c, double [] beta, double [] bc) {
     if(_u != null) Arrays.fill(_u,0);
     fillSubRange(_activeData.fullN()+1,c,_activeDataMultinomial[c].activeCols(),bc,beta);
+  }
+
+  public void setBetaMultinomial(double [] beta, double [] bc) {
+    if(_u != null) Arrays.fill(_u,0);
+    for (int c=0; c < _nclasses; c++) // loop through and call existing function instead of writing my own
+      fillSubRange(_activeData.fullN()+1,c,_activeDataMultinomial[c].activeCols(),bc,beta);
   }
   /**
    * Apply strong rules to filter out expected inactive (with zero coefficient) predictors.

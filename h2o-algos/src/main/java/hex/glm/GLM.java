@@ -739,27 +739,25 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
       assert _dinfo._responses == 3 : "IRLSM for multinomial needs extra information encoded in additional reponses, expected 3 response vecs, got " + _dinfo._responses;
 
       double[] beta = _state.betaMultinomial(); // full length multinomial coefficients all stacked up
-      double[] betaCnd = new double[beta.length];
+      double l1pen = _state.l1pen();
+      double l2pen = _state.l2pen();
+      int coeffPClass = beta.length/_nclass;
+      _state.setActiveClass(_nclass); // set ActiveClass to be number of class for IRLSM_SPEEDUP
+      boolean firstIter = true;
       do {
         beta = beta.clone();  // full length coeffs
-        int c=0;
         
         // check and walk through all classes
         boolean onlyIcpt = true; 
         for (int classInd = 0; classInd < _nclass; classInd++) {
-          onlyIcpt = onlyIcpt && (_state.activeDataMultinomial(c).fullN() == 0);
+          onlyIcpt = onlyIcpt && (_state.activeDataMultinomial(classInd).fullN() == 0);
         }
-        _state.setActiveClass(_nclass); // set ActiveClass to be number of class for IRLSM_SPEEDUP
         // generate an array of ls, should it be only one with giant stacks of class coeffs
-        LineSearchSolver[] ls = new LineSearchSolver[_nclass];
-        for (int cIndex=0; cIndex < _nclass; cIndex++)
-          ls[cIndex] = (_state.l1pen() == 0)
-                  ? new MoreThuente(_state.gslvrMultinomial(cIndex), _state.betaMultinomial(cIndex,beta), 
-                  _state.ginfoMultinomial(cIndex), beta)
-                  : new SimpleBacktrackingLS(_state.gslvrMultinomial(cIndex), _state.betaMultinomial(cIndex, beta),
-                  _state.l1pen(), beta);
-
-
+        LineSearchSolver ls = (_state.l1pen() == 0)
+                ? new MoreThuente(_state.gslvrMultinomial(0), _state.betaMultinomial(),
+                _state.ginfoMultinomial(0))
+                : new SimpleBacktrackingLS(_state.gslvrMultinomial(0), _state.betaMultinomial(),
+                _state.l1pen(), true, _nclass, coeffPClass);
           long t1 = System.currentTimeMillis();
           // generate prediction output of each class and store results in _adaptedFrame
           new GLMMultinomialSpeedUpUpdate(_state.activeDataMultinomial(), 
@@ -767,31 +765,50 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
       //  new GLMMultinomialUpdate(_state.activeDataMultinomial(),
        //         _job._key, beta, c).doAll(_state.activeDataMultinomial()._adaptedFrame);
           long t2 = System.currentTimeMillis();
-          ComputationState.GramXY gram = _state.computeGram(ls[c].get_betaAll(), s); // use ls.getX() to get only one class of coeffs.
+          ComputationState.GramXY gram = _state.computeGram(ls.getX(), s); // use ls.getX() to get all coeffs.
           long t3 = System.currentTimeMillis();
-          solveBeta(gram.gram, gram.xy, betaCnd, beta);
-   //       double[] betaCnd = ADMM_solve(gram.gram, gram.xy);
+          double[] betaCnd = solveBeta(gram.gram, gram.xy, beta, l1pen, l2pen);
 
           long t4 = System.currentTimeMillis();
-        /*  if (!onlyIcpt && !ls.evaluate(ArrayUtils.subtract(betaCnd, ls.getX(), betaCnd))) {
+          // do not perform line check for the very first time.
+          if ( !onlyIcpt && !ls.evaluate(ArrayUtils.subtract(betaCnd, ls.getX(), betaCnd)) && !firstIter) {
             Log.info(LogMsg("Ls failed " + ls));
             continue;
-          } */
+          } 
           long t5 = System.currentTimeMillis();
-       //   _state.setBetaMultinomial(c, beta, ls.getX());
+          _state.setBetaMultinomial(beta, ls.getX());
+          firstIter = false;
           // update multinomial
-       //   Log.info(LogMsg("computed in " + (t2 - t1) + "+" + (t3 - t2) + "+" + (t4 - t3) + "+" + (t5 - t4) + "=" + (t5 - t1) + "ms, step = " + ls.step() + ((_lslvr != null) ? ", l1solver " + _lslvr : "")));
-
-        _state.setActiveClass(-1);
+          Log.info(LogMsg("computed in " + (t2 - t1) + "+" + (t3 - t2) + "+" + (t4 - t3) + "+" + (t5 - t4) + "=" + (t5 - t1) + "ms, step = " + ls.step() + ((_lslvr != null) ? ", l1solver " + _lslvr : "")));
+          
       } while (progress(beta, _state.gslvr().getGradient(beta)));
     }
     
-    private void solveBeta(Gram gram, double[] xy, double[] newBeta, double[] beta) {  // final result stores in newBeta
-      Arrays.fill(newBeta, 0);
-      // add l1pen to xy if needed
+    private double[] solveBeta(Gram gram, double[] xy, double[] beta, double l1pen, double l2pen) {  // final result stores in newBeta
+      double[] newBeta = xy.clone();
+      int coeffPClass = beta.length/_nclass;
+      int lastIntercept = coeffPClass-(gram._hasIntercept?1:0);
+      Gram tempGram = gram.deep_clone();
       // add l2pen to xy and gram if needed
+      if (l2pen > 0) {
+        tempGram.addDiag(l2pen, false, _nclass);
+        for (int index=0; index < lastIntercept; index++) {
+          newBeta[index] -= l2pen*beta[index];
+        }
+      }
+      // add l1pen to xy if needed
+      if (l1pen>0) {
+        for (int index=0; index < lastIntercept; index++) {
+          newBeta[index] -= l1pen*(beta[index]>0?1:(beta[index]<0?-1:0));
+        }
+      }
       // get cholesky of gram
+      _chol = tempGram.cholesky(null, true, null);
+      if (!_chol.isSPD())
+        throw new NonSPDMatrixException();
       // solve for newBeta
+      _chol.solve(newBeta);
+      return newBeta;
     }
 
     // use regular gradient descend here.  Need to figure out how to adjust for the alpha, lambda for the elastic net
@@ -896,7 +913,7 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
             if(ls == null)
               ls = (_state.l1pen() == 0 && !_state.activeBC().hasBounds())
                  ? new MoreThuente(_state.gslvr(),_state.beta(), _state.ginfo())
-                 : new SimpleBacktrackingLS(_state.gslvr(),_state.beta().clone(), _state.l1pen(), _state.ginfo());
+                 : new SimpleBacktrackingLS(_state.gslvr(),_state.beta().clone(), _state.l1pen(), _state.ginfo(), false, 1, betaCnd.length);
             if (!ls.evaluate(ArrayUtils.subtract(betaCnd, ls.getX(), betaCnd))) { // ls.getX() get the old beta value
               Log.info(LogMsg("Ls failed " + ls));
               return;
@@ -1317,9 +1334,10 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
 
         if (_parms._family.equals(Family.ordinal))
           _dinfo.addResponse(new String[]{"__glm_ExpC", "__glm_ExpNPC"}, vecs); // store eta for class C and class C-1
-        else if (_parms._family.equals(Family.multinomial) && _parms._solver.equals(Solver.IRLSM_SPEEDUP))
+        else if (_parms._family.equals(Family.multinomial) && _parms._solver.equals(Solver.IRLSM_SPEEDUP)) {
           _dinfo.addResponse(new String[]{"__glm_sumExp", "__glm_logSumExp"}, vecs);
-          else
+          _state._multinomialSpeedup = true;
+        } else
           _dinfo.addResponse(new String[]{"__glm_sumExp", "__glm_maxRow"}, vecs);
       }
       

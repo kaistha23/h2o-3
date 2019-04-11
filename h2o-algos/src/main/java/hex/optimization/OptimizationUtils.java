@@ -56,39 +56,40 @@ public class OptimizationUtils {
     int nfeval();
     double getObj();
     double[] getX();
-
-    double[] get_betaAll();
   }
 
   public static final class SimpleBacktrackingLS implements LineSearchSolver {
-    private double[] _betaAll;  // for multinomial only
-    private double [] _beta;
-    final double _stepDec = .33;
+    private double [] _beta;  // for multinomial speedup, this will be beta stacked up for all classes
+    double _stepDec = .33;
     private double _step;
     private final GradientSolver _gslvr;
     private GradientInfo _ginfo; // gradient info excluding l1 penalty
     private double _objVal; // objective including l1 penalty
     final double _l1pen;
     int _maxfev = 20;
-    double _minStep = 1e-4;
+    boolean _multinomialSpeedup=false;
+    int _nclass;      // number of classes default to one except for multinomial speedup
+    int _coeffPClass; // number of coefficients per class
 
 
     public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen) {
-      this(gslvr, betaStart, l1pen, gslvr.getObjective(betaStart));
+      this(gslvr, betaStart, l1pen, gslvr.getObjective(betaStart), false,  1,  betaStart.length);
     }
 
-    public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen, double[] betaAll) {
-      this(gslvr, betaStart, l1pen, gslvr.getObjective(betaStart));
-      _betaAll = new double[betaAll.length];
-      System.arraycopy(betaAll, 0, _betaAll, 0, _betaAll.length);
+    public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen, boolean speedup, int nclass, int coeffPClass) {
+      this(gslvr, betaStart, l1pen, gslvr.getObjective(betaStart), speedup, nclass, coeffPClass);
     }
     
-    public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen, GradientInfo ginfo) {
+    public SimpleBacktrackingLS(GradientSolver gslvr, double [] betaStart, double l1pen, GradientInfo ginfo, 
+                                boolean speedup, int nclass, int coeffPClass) {
       _gslvr = gslvr;
       _beta = betaStart;
       _ginfo = ginfo;
       _l1pen = l1pen;
-      _objVal = _ginfo._objVal + _l1pen * ArrayUtils.l1norm(_beta,true);
+      _multinomialSpeedup = speedup;
+      _nclass = speedup?nclass:1;
+      _coeffPClass = speedup?coeffPClass:_beta.length;
+      _objVal = _ginfo._objVal + _l1pen * ArrayUtils.l1norm(_beta, true, _nclass, _coeffPClass);
     }
     public int nfeval() {return -1;}
 
@@ -97,9 +98,6 @@ public class OptimizationUtils {
 
     @Override
     public double[] getX() {return _beta;}
-    
-    // access to multinomial coeffs of all classes
-    public double[] get_betaAll() { return _betaAll;}
 
     public LineSearchSolver setInitialStep(double s){
       return this;
@@ -113,10 +111,11 @@ public class OptimizationUtils {
         d = Math.abs(1e-4/d);
         if(d < minStep) minStep = d;
       }
+      _stepDec = Math.exp(Math.log(minStep)/_maxfev);
       double [] newBeta = direction.clone();
       for(int i = 0; i < _maxfev && step >= minStep; ++i, step*= _stepDec) {
         GradientInfo ginfo = _gslvr.getObjective(ArrayUtils.wadd(_beta,direction,newBeta,step));
-        double objVal = ginfo._objVal + _l1pen * ArrayUtils.l1norm(newBeta,true);
+        double objVal = ginfo._objVal + _l1pen * ArrayUtils.l1norm(newBeta,true,_nclass, _coeffPClass);
         if(objVal < _objVal){
           _ginfo = ginfo;
           _objVal = objVal;
@@ -187,9 +186,6 @@ public class OptimizationUtils {
 
     @Override
     public double[] getX() { return _beta; }
-    
-    @Override
-    public double[] get_betaAll() { return _betaAll; }        
 
     double _xtol = 1e-8;
     double _ftol = .1; // .2/.25 works

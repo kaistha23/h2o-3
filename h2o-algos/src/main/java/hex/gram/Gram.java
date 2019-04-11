@@ -13,7 +13,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 
 public final class Gram extends Iced<Gram> {
-  boolean _hasIntercept;
+  public boolean _hasIntercept;
   public double[][] _xx;
   public double[] _diag;
   public double[][] _frame2DProduce;  // store result of transpose(Aframe)*eigenvector2Darray
@@ -21,7 +21,7 @@ public final class Gram extends Iced<Gram> {
   final int _denseN;
   int _fullN;
   final static int MIN_TSKSZ=10000;
-  boolean _multinomialSpeedUp = false;
+  public boolean _multinomialSpeedUp = false;
 
   private static class XXCache {
     public final boolean lowerDiag;
@@ -98,7 +98,7 @@ public final class Gram extends Iced<Gram> {
   public final int fullN(){return _fullN;}
   public double _diagAdded;
 
-  public void addDiag(double [] ds) {
+  public void addDiag(double [] ds) { // no need to change for multinomial speedup
     int i = 0;
     for(;i < Math.min(_diagN,ds.length); ++i)
       _diag[i] += ds[i];
@@ -127,6 +127,18 @@ public final class Gram extends Iced<Gram> {
     int ii = (!_hasIntercept || add2Intercept)?0:1;
     for( int i = 0; i < _xx.length - ii; ++i )
       _xx[i][_xx[i].length - 1] += d;
+  }
+
+  public void addDiag(double d, boolean add2Intercept, int nclass) { // todo: fix this for multinomial speedup
+    _diagAdded += d;
+    int coeffPClass = _xx.length/nclass;
+    int ii = (!_hasIntercept || add2Intercept)?0:1;
+    for( int i = 0; i < coeffPClass - ii; ++i ) {
+      for (int classInd=0; classInd < nclass; classInd++) {
+        int diagInd = i + classInd * coeffPClass;
+        _xx[diagInd][diagInd] += d;
+      }
+    }
   }
 
   public double sparseness(){
