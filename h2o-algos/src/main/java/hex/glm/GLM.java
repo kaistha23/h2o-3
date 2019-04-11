@@ -745,6 +745,7 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
       boolean firstIter;
       int iterCnt = 0;
       _state.setActiveClass(_nclass); // set ActiveClass to be number of class for IRLSM_SPEEDUP
+      boolean lsFailed = false;
 
       do {
         beta = beta.clone();  // full length coeffs
@@ -761,7 +762,7 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
                 ? new MoreThuente(_state.gslvrMultinomial(0), _state.betaMultinomial(), 
                 _state.ginfoMultinomial(0))
                 : new SimpleBacktrackingLS(_state.gslvrMultinomial(0), _state.betaMultinomial(),
-                _state.l1pen(), true, _nclass, coeffPClass);
+                _state.l1pen(), true, _nclass, coeffPClass, firstIter);
         
           long t1 = System.currentTimeMillis();
           // generate prediction output of each class and store results in _adaptedFrame
@@ -773,16 +774,18 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
           double[] betaCnd = ADMM_solve(gram.gram, gram.xy, _nclass);
 
           long t4 = System.currentTimeMillis();
-          if (!onlyIcpt && !ls.evaluate(ArrayUtils.subtract(betaCnd, ls.getX(), betaCnd)) && !firstIter) {
-            Log.info(LogMsg("Ls failed " + ls));
-            continue;
+          if (!onlyIcpt && !ls.evaluate(ArrayUtils.subtract(betaCnd, ls.getX(), betaCnd))) {
+            if (!firstIter) {
+              Log.info(LogMsg("Ls failed " + ls));
+              continue;
+            }
           } 
           long t5 = System.currentTimeMillis();
-          _state.setBetaMultinomial(beta, ls.getX());
+          _state.setBetaMultinomial(beta, lsFailed?betaCnd:ls.getX());
           // update multinomial
           Log.info(LogMsg("computed in " + (t2 - t1) + "+" + (t3 - t2) + "+" + (t4 - t3) + "+" + (t5 - t4) + "=" + (t5 - t1) + "ms, step = " + ls.step() + ((_lslvr != null) ? ", l1solver " + _lslvr : "")));
           iterCnt++;
-      } while (progress(beta, _state.gslvr().getGradient(beta)) || firstIter);  // todo: fix this to obey max runtime.
+      } while (progress(beta, _state.gslvr().getGradient(beta)));  // todo: fix this to obey max runtime.
     }
 
     // use regular gradient descend here.  Need to figure out how to adjust for the alpha, lambda for the elastic net
@@ -888,7 +891,7 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
               ls = (_state.l1pen() == 0 && !_state.activeBC().hasBounds())
                  ? new MoreThuente(_state.gslvr(),_state.beta(), _state.ginfo())
                  : new SimpleBacktrackingLS(_state.gslvr(),_state.beta().clone(), _state.l1pen(), _state.ginfo(), 
-                      false, 0, 0);
+                      false, 0, 0, firstIter);
             if (!ls.evaluate(ArrayUtils.subtract(betaCnd, ls.getX(), betaCnd))) { // ls.getX() get the old beta value
               Log.info(LogMsg("Ls failed " + ls));
               return;

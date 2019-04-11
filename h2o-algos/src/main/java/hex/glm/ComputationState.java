@@ -562,7 +562,7 @@ public final class ComputationState {
     if(_betaDiff < _parms._beta_epsilon) {
       convergenceMsg = "betaDiff < eps; betaDiff = " + _betaDiff + ", eps = " + _parms._beta_epsilon;
       converged = true;
-    } else if(_relImprovement < _parms._objective_epsilon) {
+    } else if((_relImprovement > 0 || _iter > 1) && _relImprovement < _parms._objective_epsilon) {
       convergenceMsg = "relImprovement < eps; relImprovement = " + _relImprovement + ", eps = " + _parms._objective_epsilon;
       converged = true;
     } else convergenceMsg = "not converged, betaDiff = " + _betaDiff + ", relImprovement = " + _relImprovement;
