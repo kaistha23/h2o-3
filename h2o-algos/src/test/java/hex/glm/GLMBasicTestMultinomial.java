@@ -508,6 +508,35 @@ public class GLMBasicTestMultinomial extends TestUtil {
     }
   }
 
+  @Test
+  public void testMultinomialADMMSpeedUp(){
+    Scope.enter();
+    Frame fr, f1, f2, f3, f4;
+    Random rand = new Random();
+    long seed = 12345;
+    rand.setSeed(seed);
+    int nclass = 4;
+    double threshold = 1e-10;
+    int numRows = 10000;;
+
+    try {
+      f1 = TestUtil.generate_enum_only(4, numRows, nclass, 0);
+      Scope.track(f1);
+      checkHessianXY(f1, nclass, rand, threshold);  // check with only enum columns
+      f2 = TestUtil.generate_real_only(6, numRows, 0);
+      Scope.track(f2);
+      f3 = TestUtil.generate_enum_only(1, numRows, nclass, 0);
+      Scope.track(f3);
+      fr = f1.add(f2).add(f3);  // complete frame generation
+      f4 = f2.add(f3);  // only numeric columns
+      Scope.track(f4);
+      checkHessianXY(f4, nclass, rand, threshold);  // check with only enum columns
+      Scope.track(fr);
+      checkHessianXY(f4, nclass, rand, threshold);  // check with only mixed columns
+    } finally {
+      Scope.exit();
+    }
+  }
   /**
    * I am testing the generation of gram matrix and the XY
    */
