@@ -1617,7 +1617,7 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
    */
   public static final class GramSolver implements ProximalSolver {
     private final Gram _gram;
-    private Cholesky _chol;
+    public Cholesky _chol;
 
     private final double[] _xy;
     final double _lambda;

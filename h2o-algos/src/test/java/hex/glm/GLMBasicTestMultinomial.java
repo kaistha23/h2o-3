@@ -9,6 +9,9 @@ import hex.deeplearning.DeepLearningModel;
 import hex.glm.GLMModel.GLMParameters;
 import hex.glm.GLMModel.GLMParameters.Family;
 import hex.glm.GLMModel.GLMParameters.Solver;
+import hex.gram.Gram;
+import hex.gram.Gram.Cholesky;
+import hex.gram.Gram.NonSPDMatrixException;
 import hex.optimization.ADMM;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
@@ -522,7 +525,12 @@ public class GLMBasicTestMultinomial extends TestUtil {
     try {
       f1 = TestUtil.generate_enum_only(4, numRows, nclass, 0);
       Scope.track(f1);
-      checkHessianXY(f1, nclass, rand, threshold);  // check with only enum columns
+      checkADMM(f1, nclass, rand, threshold, 0,0, true);  // check with only enum columns with no regularization
+      checkADMM(f1, nclass, rand, threshold, 0.01,0, true);  // check with only enum columns with l2pen
+      checkADMM(f1, nclass, rand, threshold, 0.01,1, true);  // check with only enum columns with l1pen
+      checkADMM(f1, nclass, rand, threshold, 0.01,0.01, true);  // check with only enum columns with both
+      checkADMM(f1, nclass, rand, threshold, 0.01,0.01, false);  // check with only enum columns with both
+      
       f2 = TestUtil.generate_real_only(6, numRows, 0);
       Scope.track(f2);
       f3 = TestUtil.generate_enum_only(1, numRows, nclass, 0);
@@ -530,13 +538,125 @@ public class GLMBasicTestMultinomial extends TestUtil {
       fr = f1.add(f2).add(f3);  // complete frame generation
       f4 = f2.add(f3);  // only numeric columns
       Scope.track(f4);
-      checkHessianXY(f4, nclass, rand, threshold);  // check with only enum columns
+      checkADMM(f4, nclass, rand, threshold, 0,0, true);  // check with only enum columns with no regularization
+      checkADMM(f4, nclass, rand, threshold, 0.01,0, true);  // check with only enum columns with l2pen
+      checkADMM(f4, nclass, rand, threshold, 0.01,1, true);  // check with only enum columns with l1pen
+      checkADMM(f4, nclass, rand, threshold, 0.01,0.01, true);  // check with only enum columns with both
+      checkADMM(f4, nclass, rand, threshold, 0.01,0.01, false);  // check with only enum columns with both
+
       Scope.track(fr);
-      checkHessianXY(f4, nclass, rand, threshold);  // check with only mixed columns
+      checkADMM(fr, nclass, rand, threshold, 0,0, true);  // check with only enum columns with no regularization
+      checkADMM(fr, nclass, rand, threshold, 0.01,0, true);  // check with only enum columns with l2pen
+      checkADMM(fr, nclass, rand, threshold, 0.01,1,true);  // check with only enum columns with l1pen
+      checkADMM(fr, nclass, rand, threshold, 0.01,0.01, false);  // check with only enum columns with both
+      
     } finally {
       Scope.exit();
     }
   }
+
+  public void checkADMM(Frame fr, int nclass, Random rand, double threshold, double lambda, double alpha, 
+                        boolean hasIntercept) {
+    Scope.enter();
+    DataInfo dinfo=null;
+    try {
+      GLMParameters params = new GLMParameters(Family.multinomial);
+      params._response_column = fr._names[fr.numCols()-1];
+      params._ignored_columns = new String[]{};
+      params._train = fr._key;
+      params._lambda = new double[]{lambda};
+      params._alpha = new double[]{alpha};
+      params._solver = Solver.IRLSM_SPEEDUP;
+      if (!hasIntercept)
+        params._intercept = false;
+
+      GLMModel.GLMWeightsFun glmw = new GLMModel.GLMWeightsFun(params);
+      dinfo = new DataInfo(fr, null, 1, true, DataInfo.TransformType.STANDARDIZE, 
+              DataInfo.TransformType.NONE, true, false, false, false,
+              false, false);
+      int ncoeffPClass = dinfo.fullN()+1;
+      double sumExp = 0;
+      double[] beta = new double[nclass*ncoeffPClass];  // generate random glm coefficients
+      for (int ind = 0; ind < beta.length; ind++) {
+        beta[ind] = rand.nextDouble();
+      }
+      int P = dinfo.fullN();       // number of predictors
+      int N = dinfo.fullN() + 1;   // number of GLM coefficients per class
+      for (int i = 1; i < nclass; ++i)
+        sumExp += Math.exp(beta[i * N + P]);
+
+      Vec [] vecs = dinfo._adaptedFrame.anyVec().makeDoubles(2, new double[]{sumExp,0});  // store sum exp and maxRow
+      dinfo.addResponse(new String[]{"__glm_sumExp", "__glm_logSumExp"}, vecs);
+      Scope.track(vecs[0]);
+      Scope.track(vecs[1]);
+      // calculate Hessian, xy and likelihood manually
+      double[][] hessian = new double[beta.length][beta.length];
+      double[] xy = new double[beta.length];
+      GLMTask.GLMIterationTask gmt = new GLMTask.GLMIterationTask(null,dinfo,glmw,beta,
+              nclass, true).doAll(dinfo._adaptedFrame);
+      ComputationState state = new ComputationState(null, params, dinfo, null, nclass);
+      state._multinomialSpeedup = true;
+      double l2pen = lambda*(1-alpha);
+      double l1pen = lambda*alpha;
+      double[] betaCnd =  ADMM_solve(gmt._gram,gmt._xy, nclass, hasIntercept, l2pen, l1pen, beta, state);
+      double[] manualBeta = solveBeta(gmt.getGram(), gmt._xy, beta, params._lambda[0]*params._alpha[0],
+              params._lambda[0]*(1-params._alpha[0]), nclass, hasIntercept);
+
+      TestUtil.checkArrays(manualBeta, betaCnd, threshold);
+
+    } finally {
+      if (dinfo!=null)
+        dinfo.remove();
+      Scope.exit();
+    }
+  }
+
+
+  private double[] ADMM_solve(Gram tempgram, double[] xy, int nclass, boolean hasIntercept, double l2pen, double l1pen,
+                              double[] beta, ComputationState state) {
+    Gram gram = tempgram.deep_clone();
+    xy = xy.clone();  // this is no longer point to the actual xy array, it is a new place
+    GLM.GramSolver slvr = new GLM.GramSolver(gram.clone(), xy.clone(), hasIntercept, l2pen,l1pen, beta, state.activeBC()._rho, null, null, nclass);
+    Cholesky _chol = slvr._chol;
+    ADMM.L1Solver _lslvr;
+    if(l1pen == 0 && !state.activeBC().hasBounds()) { // todo: check with l1pen=0
+      slvr.solve(xy);
+    } else {
+      // xy = MemoryManager.malloc8d(xy.length); // why are we setting this to zero? It is zk and uk who may be zero at the beginning
+      (_lslvr = new ADMM.L1Solver(1e-4, 10000, state._u, nclass)).solve(slvr, xy, l1pen,
+              hasIntercept, null, null);
+    }
+    return xy;
+  }
+
+  private double[] solveBeta(Gram gram, double[] xy, double[] beta, double l1pen, double l2pen, int nclass, boolean hasIntercept) {  // final result stores in newBeta
+    double[] newBeta = xy.clone();
+    int coeffPClass = beta.length/nclass;
+    int lastIntercept = coeffPClass - (hasIntercept?1:0);
+    Gram tempGram = gram.deep_clone();
+    // add l2pen to xy and gram if needed
+    if (l2pen > 0) {
+      tempGram.addDiag(l2pen, false, nclass);
+      for (int index=0; index < lastIntercept; index++) {
+        newBeta[index] -= l2pen*beta[index];
+      }
+    }
+    // add l1pen to xy if needed
+    if (l1pen>0) {
+      for (int index=0; index < lastIntercept; index++) {
+        newBeta[index] -= l1pen*(beta[index]>0?1:(beta[index]<0?-1:0));
+      }
+    }
+    // get cholesky of gram
+    Cholesky _chol = tempGram.cholesky(null, true, null);
+    if (!_chol.isSPD())
+      throw new NonSPDMatrixException();
+    // solve for newBeta
+    _chol.solve(newBeta);
+    return newBeta;
+  }
+  
+  
   /**
    * I am testing the generation of gram matrix and the XY
    */
@@ -564,7 +684,7 @@ public class GLMBasicTestMultinomial extends TestUtil {
       Scope.track(f4);
       checkHessianXY(f4, nclass, rand, threshold);  // check with only enum columns
       Scope.track(fr);
-      checkHessianXY(f4, nclass, rand, threshold);  // check with only mixed columns
+      checkHessianXY(fr, nclass, rand, threshold);  // check with only mixed columns
     } finally {
       Scope.exit();
     }
@@ -583,7 +703,9 @@ public class GLMBasicTestMultinomial extends TestUtil {
       params._solver = Solver.IRLSM_SPEEDUP;
 
       GLMModel.GLMWeightsFun glmw = new GLMModel.GLMWeightsFun(params);
-      dinfo = new DataInfo(fr, null, 1, true, DataInfo.TransformType.STANDARDIZE, DataInfo.TransformType.NONE, true, false, false, false, false, false);
+      dinfo = new DataInfo(fr, null, 1, true, DataInfo.TransformType.STANDARDIZE, 
+              DataInfo.TransformType.NONE, true, false, false, false,
+              false, false);
       int ncoeffPClass = dinfo.fullN()+1;
       double sumExp = 0;
       double[] beta = new double[nclass*ncoeffPClass];
